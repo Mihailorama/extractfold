@@ -20,11 +20,18 @@ HEAVY_IMPORT_NAMES = {
 
 def test_core_imports_without_optional_dependencies() -> None:
     import extractfold
+    from extractfold import SchemaConversionResult, infer_schema, template_to_schema
     from extractfold.engines.base import ExtractionEngine, ExtractionResult
 
     assert extractfold.__version__
     assert ExtractionEngine
     assert ExtractionResult
+    assert SchemaConversionResult
+    assert infer_schema({"name": "Acme"}) == {
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+    }
+    assert template_to_schema({"name": {"type": "string"}}).schema["type"] == "object"
 
 
 def test_engine_modules_do_not_import_heavy_dependencies_at_top_level() -> None:

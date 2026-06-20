@@ -12,6 +12,7 @@ from extractfold.engines.base import (
     load_schema,
     validate_data,
 )
+from extractfold.schema import SchemaConversionResult, infer_schema, template_to_schema
 
 __version__ = "0.1.0"
 
@@ -21,8 +22,11 @@ __all__ = [
     "ExtractionEngine",
     "ExtractionResult",
     "ExtractionRouter",
+    "SchemaConversionResult",
     "SchemaValidationResult",
     "__version__",
+    "infer_schema",
     "load_schema",
+    "template_to_schema",
     "validate_data",
 ]
