@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from extractfold.chunking import TextChunk, chunk_json_array, chunk_rows, chunk_sections, chunk_text
 from extractfold.engines.base import (
     BatchExtractionResult,
     ExtractionCapabilities,
@@ -24,7 +25,12 @@ __all__ = [
     "ExtractionRouter",
     "SchemaConversionResult",
     "SchemaValidationResult",
+    "TextChunk",
     "__version__",
+    "chunk_json_array",
+    "chunk_rows",
+    "chunk_sections",
+    "chunk_text",
     "infer_schema",
     "load_schema",
     "template_to_schema",
