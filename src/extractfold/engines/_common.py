@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import inspect
-import json
 import re
 import time
 from pathlib import Path
 from typing import Any
 
 from extractfold.engines.base import ExtractionResult, JsonSchema, validate_data
+from extractfold.parsing import normalize_data_payload
+from extractfold.parsing import parse_json_object as _parse_json_object
 
 
 async def maybe_await(value: Any) -> Any:
@@ -36,38 +37,13 @@ def extract_data_payload(payload: Any) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         dumped = payload.model_dump()
         if isinstance(dumped, dict):
-            return dumped
-    if isinstance(payload, str):
-        payload = parse_json_object(payload)
-    if not isinstance(payload, dict):
-        actual = type(payload).__name__
-        raise ValueError(f"Expected extraction payload to be an object, got {actual}")
-    for key in ("data", "result", "extraction", "fields"):
-        nested = payload.get(key)
-        if isinstance(nested, dict):
-            field_values = nested.values()
-            if key == "fields" and all(isinstance(v, dict) and "value" in v for v in field_values):
-                return {name: item.get("value") for name, item in nested.items()}
-            return nested
-    return payload
+            payload = dumped
+    return normalize_data_payload(payload)
 
 
 def parse_json_object(text: str) -> dict[str, Any]:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
-        stripped = re.sub(r"\s*```$", "", stripped)
-    try:
-        parsed = json.loads(stripped)
-    except json.JSONDecodeError:
-        start = stripped.find("{")
-        end = stripped.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise
-        parsed = json.loads(stripped[start : end + 1])
-    if not isinstance(parsed, dict):
-        raise ValueError("JSON payload must be an object")
-    return parsed
+    """Backward-compatible object parser for engine adapters."""
+    return _parse_json_object(text)
 
 
 def coerce_data_to_schema(data: dict[str, Any], schema: JsonSchema) -> dict[str, Any]:
