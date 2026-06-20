@@ -16,6 +16,7 @@ from extractfold.engines.base import (
     load_schema,
     validate_data,
 )
+from extractfold.schema import SchemaConversionResult, template_to_schema
 
 
 @runtime_checkable
@@ -55,17 +56,26 @@ async def extract_text(
 
 async def extract_rows(
     text: str,
-    schema: JsonSchema | str | Mapping[str, Any],
+    schema: Any,
     *,
     engine: ExtractionEngine,
     **kwargs: Any,
 ) -> ExtractionResult:
     """Extract structured rows from already-prepared text."""
-    result = await extract_text(text, schema, engine=engine, **kwargs)
+    conversion = _load_or_convert_row_schema(schema)
+    row_schema = conversion.schema
+    result = await extract_text(text, row_schema, engine=engine, **kwargs)
     if isinstance(result.data, dict) and isinstance(result.data.get("rows"), list):
-        return result
+        wrapped_schema = _row_result_schema(row_schema)
+        validation = validate_data(result.data, wrapped_schema)
+        return replace(
+            result,
+            schema=wrapped_schema,
+            valid=validation.valid,
+            metadata=_merge_row_metadata(result.metadata, row_schema, conversion.metadata),
+        )
     if isinstance(result.data, list):
-        wrapped_schema = _rows_wrapper_schema(load_schema(schema))
+        wrapped_schema = _row_result_schema(row_schema)
         wrapped_data = {"rows": result.data}
         validation = validate_data(wrapped_data, wrapped_schema)
         return replace(
@@ -73,9 +83,25 @@ async def extract_rows(
             data=wrapped_data,
             schema=wrapped_schema,
             valid=validation.valid,
-            metadata={**result.metadata, "row_schema": load_schema(schema)},
+            metadata=_merge_row_metadata(result.metadata, row_schema, conversion.metadata),
         )
     raise ValueError("Row extraction expected a list payload or an object with a 'rows' list")
+
+
+def _load_or_convert_row_schema(schema: Any) -> SchemaConversionResult:
+    if isinstance(schema, list):
+        return template_to_schema(schema)
+    if isinstance(schema, Mapping) and not _looks_like_json_schema(schema):
+        return template_to_schema(schema)
+    return SchemaConversionResult(schema=load_schema(schema), metadata={"computed_fields": {}})
+
+
+def _looks_like_json_schema(schema: Mapping[str, Any]) -> bool:
+    return any(key in schema for key in ("$schema", "type", "properties", "items", "required"))
+
+
+def _row_result_schema(schema: JsonSchema) -> JsonSchema:
+    return schema if _is_rows_wrapper_schema(schema) else _rows_wrapper_schema(schema)
 
 
 def _rows_wrapper_schema(schema: JsonSchema) -> JsonSchema:
@@ -85,4 +111,24 @@ def _rows_wrapper_schema(schema: JsonSchema) -> JsonSchema:
         "properties": {
             "rows": schema if schema.get("type") == "array" else {"type": "array", "items": schema}
         },
+    }
+
+
+def _is_rows_wrapper_schema(schema: JsonSchema) -> bool:
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return False
+    rows_schema = properties.get("rows")
+    return isinstance(rows_schema, dict) and rows_schema.get("type") == "array"
+
+
+def _merge_row_metadata(
+    metadata: dict[str, Any],
+    row_schema: JsonSchema,
+    conversion_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        **metadata,
+        "row_schema": row_schema,
+        "schema_conversion": conversion_metadata,
     }

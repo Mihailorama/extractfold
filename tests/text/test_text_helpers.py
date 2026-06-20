@@ -15,6 +15,7 @@ class NativeTextEngine(ExtractionEngine):
         self.extract_called = False
         self.text_seen: str | None = None
         self.kwargs_seen: dict[str, Any] | None = None
+        self.schema_seen: dict[str, Any] | None = None
 
     @property
     def name(self) -> str:
@@ -34,10 +35,11 @@ class NativeTextEngine(ExtractionEngine):
     async def extract_text(self, text: str, schema, **kwargs: Any) -> ExtractionResult:
         self.text_seen = text
         self.kwargs_seen = kwargs
+        self.schema_seen = load_schema(schema)
         return ExtractionResult(
             data=self.data,
             engine_name=self.name,
-            schema=load_schema(schema),
+            schema=self.schema_seen,
             metadata={"native": True},
         )
 
@@ -138,3 +140,77 @@ async def test_extract_rows_preserves_existing_rows_wrapper() -> None:
 
     assert result.data == {"rows": [{"name": "Ada"}]}
     assert result.valid is True
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_accepts_sample_array_template() -> None:
+    template = [{"sku": "", "quantity": 0}]
+    engine = NativeTextEngine([{"sku": "A-1", "quantity": 2}])
+
+    result = await extract_rows("SKU A-1 quantity 2", template, engine=engine)
+
+    assert engine.schema_seen == {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "sku": {"type": "string"},
+                "quantity": {"type": "integer"},
+            },
+        },
+    }
+    assert result.data == {"rows": [{"sku": "A-1", "quantity": 2}]}
+    assert result.metadata["row_schema"] == engine.schema_seen
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_accepts_field_descriptor_template() -> None:
+    template = {
+        "sku": {"type": "string", "required": True},
+        "quantity": {"type": "integer"},
+    }
+    engine = NativeTextEngine([{"sku": "A-1", "quantity": 2}])
+
+    result = await extract_rows("SKU A-1 quantity 2", template, engine=engine)
+
+    assert engine.schema_seen == {
+        "type": "object",
+        "required": ["sku"],
+        "properties": {
+            "sku": {"type": "string"},
+            "quantity": {"type": "integer"},
+        },
+    }
+    assert result.schema == {
+        "type": "object",
+        "required": ["rows"],
+        "properties": {
+            "rows": {
+                "type": "array",
+                "items": engine.schema_seen,
+            }
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_preserves_computed_field_metadata() -> None:
+    template = {
+        "sku": {"type": "string"},
+        "score": {"type": "number", "computed": True},
+    }
+    engine = NativeTextEngine([{"sku": "A-1"}])
+
+    result = await extract_rows("SKU A-1", template, engine=engine)
+
+    assert engine.schema_seen == {
+        "type": "object",
+        "properties": {
+            "sku": {"type": "string"},
+        },
+    }
+    assert result.metadata["schema_conversion"] == {
+        "computed_fields": {
+            "score": {"type": "number", "computed": True},
+        }
+    }
