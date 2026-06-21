@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python < 3.11
+    import tomli as tomllib
 
 
 def test_pyproject_declares_required_extras_and_console_script() -> None:
@@ -12,6 +15,7 @@ def test_pyproject_declares_required_extras_and_console_script() -> None:
     assert data["project"]["scripts"]["extractfold"] == "extractfold.cli:main"
 
     extras = data["project"]["optional-dependencies"]
+    assert any(item.startswith("tomli") for item in extras["test"])
     for name in [
         "lift",
         "nuextract",
