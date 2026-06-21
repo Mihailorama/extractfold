@@ -1,0 +1,120 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "extractfold"
+version = "0.1.0"
+description = "Schema-guided structured data extraction from documents."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Mihailorama", email = "mihailorama@gmail.com" },
+]
+keywords = [
+    "document-extraction",
+    "structured-data",
+    "json-schema",
+    "llm",
+    "ocr",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: General",
+]
+dependencies = []
+
+[project.optional-dependencies]
+lift = [
+    "requests>=2.31",
+]
+nuextract = [
+    "transformers>=4.40",
+    "torch>=2.0",
+]
+nuextract-vllm = [
+    "vllm>=0.5",
+]
+provider_router = []
+llm_structured = [
+    "anthropic>=0.40",
+    "openai>=1.50",
+    "google-genai>=1.0",
+]
+instructor = [
+    "instructor>=1.6",
+    "openai>=1.50",
+]
+llamaextract = [
+    "llama-cloud-services>=0.6",
+]
+azure_docint = [
+    "azure-ai-documentintelligence>=1.0",
+]
+google_docai = [
+    "google-cloud-documentai>=3.0",
+]
+textract = [
+    "boto3>=1.28",
+]
+docfold_llm = [
+    "docfold>=0.6",
+    "extractfold[llm_structured]",
+]
+evaluation = []
+all = [
+    "extractfold[lift,nuextract,provider_router,llm_structured,instructor,llamaextract,azure_docint,google_docai,textract,docfold_llm,evaluation]",
+]
+test = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "tomli>=2.0; python_version < '3.11'",
+]
+dev = [
+    "extractfold[test]",
+]
+
+[project.urls]
+Homepage = "https://github.com/mihailorama/extractfold"
+Documentation = "https://github.com/mihailorama/extractfold/tree/main/docs"
+Repository = "https://github.com/mihailorama/extractfold"
+Issues = "https://github.com/mihailorama/extractfold/issues"
+Changelog = "https://github.com/mihailorama/extractfold/blob/main/CHANGELOG.md"
+
+[project.scripts]
+extractfold = "extractfold.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/extractfold"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+markers = [
+    "integration: tests requiring model weights, cloud credentials, or network access",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_configs = true
+disable_error_code = ["import-untyped"]
