@@ -10,6 +10,7 @@ def test_default_router_registers_required_engines() -> None:
     assert {
         "lift",
         "nuextract",
+        "provider_router",
         "llm_structured",
         "instructor",
         "llamaextract",

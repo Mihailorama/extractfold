@@ -83,6 +83,17 @@ class TestSelection:
         with patch.dict(os.environ, {"EXTRACTFOLD_ENGINE": "nuextract"}):
             assert router.select("invoice.txt").name == "nuextract"
 
+    def test_text_priority_prefers_provider_router_when_available(self) -> None:
+        router = ExtractionRouter(
+            [
+                FakeEngine("llm_structured", {"txt"}, available=True),
+                FakeEngine("provider_router", {"txt"}, available=True),
+                FakeEngine("nuextract", {"txt"}, available=True),
+            ]
+        )
+
+        assert router.select("invoice.txt").name == "provider_router"
+
     def test_legacy_engine_default_env_is_supported(self, router: ExtractionRouter) -> None:
         with patch.dict(os.environ, {"ENGINE_DEFAULT": "lift"}, clear=True):
             assert router.select("invoice.pdf").name == "lift"

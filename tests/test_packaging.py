@@ -15,6 +15,7 @@ def test_pyproject_declares_required_extras_and_console_script() -> None:
     for name in [
         "lift",
         "nuextract",
+        "provider_router",
         "llm_structured",
         "instructor",
         "llamaextract",

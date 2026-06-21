@@ -21,6 +21,7 @@ extractfold benchmark dataset --engines llm_structured,lift --out results.json
 | --- | --- | --- | --- | --- | --- | --- |
 | lift | Yes | Yes | Yes | No | Yes | Reference SaaS adapter |
 | nuextract | No | No | Yes | Yes | No | Requires local HF/vLLM runtime |
+| provider_router | No | No | Yes | No | Yes | Injected callable; cost and latency come from caller metadata |
 | llm_structured | No | No | Yes | No | Yes | Anthropic default; OpenAI/Gemini supported |
 | instructor | No | No | Yes | No | Yes | Uses provider chat model through instructor |
 | llamaextract | No | No | Yes | No | Yes | LlamaCloud Extract |

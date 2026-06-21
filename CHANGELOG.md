@@ -12,3 +12,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Engine adapters for Lift, NuExtract, LLM structured outputs, Instructor,
   LlamaExtract, Azure Document Intelligence, Google Document AI, AWS Textract,
   and docfold plus LLM extraction.
+- Dependency-free `provider_router` engine for injected model gateways over
+  prepared text.

@@ -44,6 +44,7 @@ nuextract = [
 nuextract-vllm = [
     "vllm>=0.5",
 ]
+provider_router = []
 llm_structured = [
     "anthropic>=0.40",
     "openai>=1.50",
@@ -71,7 +72,7 @@ docfold_llm = [
 ]
 evaluation = []
 all = [
-    "extractfold[lift,nuextract,llm_structured,instructor,llamaextract,azure_docint,google_docai,textract,docfold_llm,evaluation]",
+    "extractfold[lift,nuextract,provider_router,llm_structured,instructor,llamaextract,azure_docint,google_docai,textract,docfold_llm,evaluation]",
 ]
 test = [
     "pytest>=7.0",

@@ -13,6 +13,7 @@ dependencies lazily.
 
 ```bash
 pip install extractfold
+pip install "extractfold[provider_router]"
 pip install "extractfold[llm_structured]"
 pip install "extractfold[all]"
 ```
@@ -57,6 +58,7 @@ extractfold benchmark ./dataset --engines llm_structured,lift --out results.json
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `lift` | Datalab Lift adapter | SaaS | Native | Yes | Yes | Yes | Remote | Fast | Paid API |
 | `nuextract` | Open model | Model license | Prompt JSON | Yes | No | No | Local | Medium | Hardware |
+| `provider_router` | Injected model gateway | App-defined | Prompt JSON | Yes | No | No | Remote | App-defined | App-defined |
 | `llm_structured` | LLM structured outputs | Provider terms | Tool/JSON mode | Yes | No | No | Remote | Medium | Paid tokens |
 | `instructor` | Pydantic/JSON extraction | MIT library + provider terms | Pydantic/JSON Schema | Yes | No | No | Remote by default | Medium | Paid tokens |
 | `llamaextract` | LlamaCloud Extract | SaaS | Native | Yes | No | No | Remote | Fast | Paid API |
@@ -69,6 +71,7 @@ extractfold benchmark ./dataset --engines llm_structured,lift --out results.json
 
 | Need | Use |
 | --- | --- |
+| Existing model gateway, retries, and telemetry | `provider_router` |
 | Best practical default for arbitrary schemas | `llm_structured` |
 | First-party Datalab Lift workflow | `lift` |
 | Local/open-model extraction | `nuextract` |
@@ -89,11 +92,17 @@ from extractfold.engines import (
     LLMStructuredEngine,
     LlamaExtractEngine,
     NuExtractEngine,
+    ProviderRouterEngine,
     TextractEngine,
 )
 ```
 
 ```python
+async def provider_call(**kwargs):
+    # Call an application-owned gateway and return JSON-compatible data.
+    return {"invoice_id": "INV-001", "total": 125.5}
+
+result = await ProviderRouterEngine(provider_call=provider_call).extract("invoice.txt", "invoice")
 result = await LiftEngine().extract("invoice.pdf", "invoice")
 result = await NuExtractEngine(backend="hf").extract("invoice.txt", "invoice")
 result = await LLMStructuredEngine(provider="anthropic").extract("invoice.pdf", "invoice")

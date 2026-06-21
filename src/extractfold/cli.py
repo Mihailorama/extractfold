@@ -61,12 +61,14 @@ def _build_router() -> ExtractionRouter:
     from extractfold.engines.llamaextract_engine import LlamaExtractEngine
     from extractfold.engines.llm_structured_engine import LLMStructuredEngine
     from extractfold.engines.nuextract_engine import NuExtractEngine
+    from extractfold.engines.provider_router_engine import ProviderRouterEngine
     from extractfold.engines.textract_engine import TextractEngine
 
     return ExtractionRouter(
         [
             LiftEngine(),
             NuExtractEngine(),
+            ProviderRouterEngine(),
             LLMStructuredEngine(),
             InstructorEngine(),
             LlamaExtractEngine(),

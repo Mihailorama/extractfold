@@ -244,6 +244,7 @@ def _matches_type(value: Any, expected: str | list[str]) -> bool:
 
 _DEFAULT_PRIORITY = [
     "lift",
+    "provider_router",
     "llm_structured",
     "docfold_llm",
     "llamaextract",
@@ -262,9 +263,9 @@ _EXTENSION_PRIORITY: dict[str, list[str]] = {
     "tiff": _DEFAULT_PRIORITY,
     "tif": _DEFAULT_PRIORITY,
     "docx": _DEFAULT_PRIORITY,
-    "txt": ["nuextract", "llm_structured", "docfold_llm", "instructor", "lift"],
-    "md": ["nuextract", "llm_structured", "docfold_llm", "instructor", "lift"],
-    "html": ["llm_structured", "docfold_llm", "instructor", "lift"],
+    "txt": ["provider_router", "nuextract", "llm_structured", "docfold_llm", "instructor", "lift"],
+    "md": ["provider_router", "nuextract", "llm_structured", "docfold_llm", "instructor", "lift"],
+    "html": ["provider_router", "llm_structured", "docfold_llm", "instructor", "lift"],
 }
 
 

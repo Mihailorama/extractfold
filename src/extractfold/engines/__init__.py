@@ -11,6 +11,7 @@ from extractfold.engines.lift_engine import LiftEngine
 from extractfold.engines.llamaextract_engine import LlamaExtractEngine
 from extractfold.engines.llm_structured_engine import LLMStructuredEngine
 from extractfold.engines.nuextract_engine import NuExtractEngine
+from extractfold.engines.provider_router_engine import ProviderRouterEngine
 from extractfold.engines.textract_engine import TextractEngine
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "LLMStructuredEngine",
     "LlamaExtractEngine",
     "NuExtractEngine",
+    "ProviderRouterEngine",
     "TextractEngine",
 ]
