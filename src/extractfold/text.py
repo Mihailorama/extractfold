@@ -100,6 +100,7 @@ async def extract_rows_chunked(
     chunks: Sequence[TextChunk] | None = None,
     max_chars: int | None = None,
     overlap: int = 0,
+    continue_on_error: bool = False,
     **kwargs: Any,
 ) -> ExtractionResult:
     """Extract structured rows from prepared text with chunked orchestration."""
@@ -114,20 +115,44 @@ async def extract_rows_chunked(
     raw_results: list[Any] = []
     chunk_metadata: list[dict[str, Any]] = []
     total_duplicates = 0
+    failed_chunks = 0
+    succeeded_chunks = 0
     previous_digest: str | None = None
 
     for chunk in planned_chunks:
-        chunk_result = await extract_rows(
-            chunk.text,
-            row_schema,
-            engine=engine,
-            chunk=chunk.to_dict(),
-            previous_chunk_digest=previous_digest,
-            **kwargs,
-        )
-        chunk_rows = chunk_result.data.get("rows", [])
-        if not isinstance(chunk_rows, list):
-            raise ValueError("Chunk extraction expected an object with a 'rows' list")
+        try:
+            chunk_result = await extract_rows(
+                chunk.text,
+                row_schema,
+                engine=engine,
+                chunk=chunk.to_dict(),
+                previous_chunk_digest=previous_digest,
+                **kwargs,
+            )
+            chunk_rows = chunk_result.data.get("rows", [])
+            if not isinstance(chunk_rows, list):
+                raise ValueError("Chunk extraction expected an object with a 'rows' list")
+        except Exception as exc:
+            if not continue_on_error:
+                raise
+            error_payload = _chunk_error_payload(exc)
+            chunk_metadata.append(
+                {
+                    **chunk.to_dict(),
+                    "previous_chunk_digest": previous_digest,
+                    "status": "failed",
+                    "rows_returned": 0,
+                    "rows_added": 0,
+                    "duplicates_removed": 0,
+                    "valid": False,
+                    "engine_name": engine.name,
+                    "processing_time_ms": 0,
+                    **error_payload,
+                }
+            )
+            raw_results.append(error_payload)
+            failed_chunks += 1
+            continue
 
         added = 0
         duplicates = 0
@@ -144,6 +169,7 @@ async def extract_rows_chunked(
             {
                 **chunk.to_dict(),
                 "previous_chunk_digest": previous_digest,
+                "status": "succeeded",
                 "rows_returned": len(chunk_rows),
                 "rows_added": added,
                 "duplicates_removed": duplicates,
@@ -154,6 +180,7 @@ async def extract_rows_chunked(
         )
         raw_results.append(chunk_result.raw)
         total_duplicates += duplicates
+        succeeded_chunks += 1
         previous_digest = _digest_rows(chunk_rows)
 
     data = {"rows": rows}
@@ -162,7 +189,7 @@ async def extract_rows_chunked(
         data=data,
         engine_name=engine.name,
         schema=result_schema,
-        valid=validation.valid,
+        valid=validation.valid and failed_chunks == 0,
         raw=raw_results,
         metadata={
             "row_schema": row_schema,
@@ -170,6 +197,9 @@ async def extract_rows_chunked(
             "chunking": {
                 "strategy": "sequential",
                 "total_chunks": len(planned_chunks),
+                "succeeded_chunks": succeeded_chunks,
+                "failed_chunks": failed_chunks,
+                "partial": failed_chunks > 0,
                 "rows_extracted": len(rows),
                 "duplicates_removed": total_duplicates,
                 "chunks": chunk_metadata,
@@ -249,3 +279,7 @@ def _row_key(row: Any) -> str:
 def _digest_rows(rows: Sequence[Any]) -> str:
     payload = json.dumps(list(rows), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _chunk_error_payload(exc: Exception) -> dict[str, str]:
+    return {"error_type": type(exc).__name__, "error": str(exc)}

@@ -41,6 +41,23 @@ class ChunkAwareEngine(ExtractionEngine):
         )
 
 
+class FailingChunkEngine(ChunkAwareEngine):
+    def __init__(
+        self,
+        rows_by_text: dict[str, list[dict[str, Any]]],
+        *,
+        fail_on: set[str],
+    ) -> None:
+        super().__init__(rows_by_text)
+        self.fail_on = fail_on
+
+    async def extract_text(self, text: str, schema, **kwargs: Any) -> ExtractionResult:
+        if text in self.fail_on:
+            self.calls.append({"text": text, "kwargs": kwargs})
+            raise RuntimeError(f"chunk failed: {text}")
+        return await super().extract_text(text, schema, **kwargs)
+
+
 def _chunk(text: str, index: int, start: int, end: int) -> TextChunk:
     return TextChunk(
         text=text,
@@ -148,3 +165,66 @@ async def test_extract_rows_chunked_preserves_template_conversion_metadata() -> 
     assert result.metadata["schema_conversion"] == {
         "computed_fields": {"score": {"type": "number", "computed": True}}
     }
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_raises_by_default_when_chunk_fails() -> None:
+    engine = FailingChunkEngine(
+        {
+            "first": [{"id": 1}],
+            "third": [{"id": 3}],
+        },
+        fail_on={"second"},
+    )
+
+    with pytest.raises(RuntimeError, match="chunk failed: second"):
+        await extract_rows_chunked(
+            "first second third",
+            [{"id": 0}],
+            engine=engine,
+            chunks=[
+                _chunk("first", 0, 0, 5),
+                _chunk("second", 1, 6, 12),
+                _chunk("third", 2, 13, 18),
+            ],
+        )
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_can_continue_after_failed_chunks() -> None:
+    engine = FailingChunkEngine(
+        {
+            "first": [{"id": 1}],
+            "third": [{"id": 3}],
+        },
+        fail_on={"second"},
+    )
+
+    result = await extract_rows_chunked(
+        "first second third",
+        [{"id": 0}],
+        engine=engine,
+        chunks=[
+            _chunk("first", 0, 0, 5),
+            _chunk("second", 1, 6, 12),
+            _chunk("third", 2, 13, 18),
+        ],
+        continue_on_error=True,
+    )
+
+    chunking = result.metadata["chunking"]
+
+    assert result.data == {"rows": [{"id": 1}, {"id": 3}]}
+    assert result.valid is False
+    assert result.raw[1] == {"error_type": "RuntimeError", "error": "chunk failed: second"}
+    assert chunking["total_chunks"] == 3
+    assert chunking["succeeded_chunks"] == 2
+    assert chunking["failed_chunks"] == 1
+    assert chunking["partial"] is True
+    assert chunking["chunks"][1]["status"] == "failed"
+    assert chunking["chunks"][1]["error_type"] == "RuntimeError"
+    assert chunking["chunks"][1]["error"] == "chunk failed: second"
+    assert chunking["chunks"][1]["rows_returned"] == 0
+    assert chunking["chunks"][1]["rows_added"] == 0
+    assert chunking["chunks"][1]["duplicates_removed"] == 0
+    assert chunking["chunks"][2]["status"] == "succeeded"
