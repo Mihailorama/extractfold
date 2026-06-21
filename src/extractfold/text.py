@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import hashlib
+import json
+import time
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Protocol, runtime_checkable
 
+from extractfold.chunking import TextChunk, chunk_text
 from extractfold.engines._common import maybe_await
 from extractfold.engines.base import (
     ExtractionEngine,
@@ -88,6 +92,107 @@ async def extract_rows(
     raise ValueError("Row extraction expected a list payload or an object with a 'rows' list")
 
 
+async def extract_rows_chunked(
+    text: str,
+    schema: Any,
+    *,
+    engine: ExtractionEngine,
+    chunks: Sequence[TextChunk] | None = None,
+    max_chars: int | None = None,
+    overlap: int = 0,
+    **kwargs: Any,
+) -> ExtractionResult:
+    """Extract structured rows from prepared text with chunked orchestration."""
+    start = time.perf_counter()
+    conversion = _load_or_convert_row_schema(schema)
+    row_schema = conversion.schema
+    result_schema = _row_result_schema(row_schema)
+    planned_chunks = _resolve_chunks(text, chunks=chunks, max_chars=max_chars, overlap=overlap)
+
+    rows: list[Any] = []
+    seen: set[str] = set()
+    raw_results: list[Any] = []
+    chunk_metadata: list[dict[str, Any]] = []
+    total_duplicates = 0
+    previous_digest: str | None = None
+
+    for chunk in planned_chunks:
+        chunk_result = await extract_rows(
+            chunk.text,
+            row_schema,
+            engine=engine,
+            chunk=chunk.to_dict(),
+            previous_chunk_digest=previous_digest,
+            **kwargs,
+        )
+        chunk_rows = chunk_result.data.get("rows", [])
+        if not isinstance(chunk_rows, list):
+            raise ValueError("Chunk extraction expected an object with a 'rows' list")
+
+        added = 0
+        duplicates = 0
+        for row in chunk_rows:
+            row_key = _row_key(row)
+            if row_key in seen:
+                duplicates += 1
+                continue
+            seen.add(row_key)
+            rows.append(row)
+            added += 1
+
+        chunk_metadata.append(
+            {
+                **chunk.to_dict(),
+                "previous_chunk_digest": previous_digest,
+                "rows_returned": len(chunk_rows),
+                "rows_added": added,
+                "duplicates_removed": duplicates,
+                "valid": chunk_result.valid,
+                "engine_name": chunk_result.engine_name,
+                "processing_time_ms": chunk_result.processing_time_ms,
+            }
+        )
+        raw_results.append(chunk_result.raw)
+        total_duplicates += duplicates
+        previous_digest = _digest_rows(chunk_rows)
+
+    data = {"rows": rows}
+    validation = validate_data(data, result_schema)
+    return ExtractionResult(
+        data=data,
+        engine_name=engine.name,
+        schema=result_schema,
+        valid=validation.valid,
+        raw=raw_results,
+        metadata={
+            "row_schema": row_schema,
+            "schema_conversion": conversion.metadata,
+            "chunking": {
+                "strategy": "sequential",
+                "total_chunks": len(planned_chunks),
+                "rows_extracted": len(rows),
+                "duplicates_removed": total_duplicates,
+                "chunks": chunk_metadata,
+            },
+        },
+        processing_time_ms=int((time.perf_counter() - start) * 1000),
+    )
+
+
+def _resolve_chunks(
+    text: str,
+    *,
+    chunks: Sequence[TextChunk] | None,
+    max_chars: int | None,
+    overlap: int,
+) -> list[TextChunk]:
+    if chunks is not None:
+        return list(chunks)
+    if max_chars is None:
+        raise ValueError("extract_rows_chunked requires chunks or max_chars")
+    return chunk_text(text, max_chars=max_chars, overlap=overlap)
+
+
 def _load_or_convert_row_schema(schema: Any) -> SchemaConversionResult:
     if isinstance(schema, list):
         return template_to_schema(schema)
@@ -132,3 +237,15 @@ def _merge_row_metadata(
         "row_schema": row_schema,
         "schema_conversion": conversion_metadata,
     }
+
+
+def _row_key(row: Any) -> str:
+    try:
+        return json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except TypeError:
+        return repr(row)
+
+
+def _digest_rows(rows: Sequence[Any]) -> str:
+    payload = json.dumps(list(rows), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()

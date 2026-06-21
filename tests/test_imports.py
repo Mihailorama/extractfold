@@ -24,6 +24,7 @@ def test_core_imports_without_optional_dependencies() -> None:
         SchemaConversionResult,
         TextChunk,
         chunk_text,
+        extract_rows_chunked,
         infer_schema,
         template_to_schema,
     )
@@ -33,6 +34,7 @@ def test_core_imports_without_optional_dependencies() -> None:
     assert ExtractionEngine
     assert ExtractionResult
     assert TextChunk
+    assert extract_rows_chunked
     assert chunk_text("abcdef", max_chars=3)[0].text == "abc"
     assert SchemaConversionResult
     assert infer_schema({"name": "Acme"}) == {

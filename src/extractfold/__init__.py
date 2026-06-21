@@ -14,6 +14,7 @@ from extractfold.engines.base import (
     validate_data,
 )
 from extractfold.schema import SchemaConversionResult, infer_schema, template_to_schema
+from extractfold.text import extract_rows_chunked
 
 __version__ = "0.1.0"
 
@@ -31,6 +32,7 @@ __all__ = [
     "chunk_rows",
     "chunk_sections",
     "chunk_text",
+    "extract_rows_chunked",
     "infer_schema",
     "load_schema",
     "template_to_schema",
