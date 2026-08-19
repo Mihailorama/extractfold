@@ -98,6 +98,11 @@ Changelog = "https://github.com/mihailorama/extractfold/blob/main/CHANGELOG.md"
 [project.scripts]
 extractfold = "extractfold.cli:main"
 
+[tool.hatch.build.targets.sdist]
+# .claude contains symlinks that point outside the repo, which breaks
+# building a wheel from the sdist.
+exclude = [".claude", ".github"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/extractfold"]
 
