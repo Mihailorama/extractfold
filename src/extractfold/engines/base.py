@@ -253,6 +253,7 @@ _DEFAULT_PRIORITY = [
     "textract",
     "nuextract",
     "instructor",
+    "fenic",
 ]
 
 _EXTENSION_PRIORITY: dict[str, list[str]] = {
@@ -263,9 +264,25 @@ _EXTENSION_PRIORITY: dict[str, list[str]] = {
     "tiff": _DEFAULT_PRIORITY,
     "tif": _DEFAULT_PRIORITY,
     "docx": _DEFAULT_PRIORITY,
-    "txt": ["provider_router", "nuextract", "llm_structured", "docfold_llm", "instructor", "lift"],
-    "md": ["provider_router", "nuextract", "llm_structured", "docfold_llm", "instructor", "lift"],
-    "html": ["provider_router", "llm_structured", "docfold_llm", "instructor", "lift"],
+    "txt": [
+        "provider_router",
+        "nuextract",
+        "llm_structured",
+        "docfold_llm",
+        "instructor",
+        "fenic",
+        "lift",
+    ],
+    "md": [
+        "provider_router",
+        "nuextract",
+        "llm_structured",
+        "docfold_llm",
+        "instructor",
+        "fenic",
+        "lift",
+    ],
+    "html": ["provider_router", "llm_structured", "docfold_llm", "instructor", "fenic", "lift"],
 }
 
 

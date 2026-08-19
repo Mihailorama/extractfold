@@ -15,6 +15,8 @@ HEAVY_IMPORT_NAMES = {
     "vllm",
     "llama_cloud",
     "docfold",
+    "fenic",
+    "pydantic",
 }
 
 

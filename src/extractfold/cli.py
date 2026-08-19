@@ -55,6 +55,7 @@ def main(argv: list[str] | None = None) -> None:
 def _build_router() -> ExtractionRouter:
     from extractfold.engines.azure_docint_engine import AzureDocIntEngine
     from extractfold.engines.docfold_llm_engine import DocfoldLLMEngine
+    from extractfold.engines.fenic_engine import FenicEngine
     from extractfold.engines.google_docai_engine import GoogleDocAIEngine
     from extractfold.engines.instructor_engine import InstructorEngine
     from extractfold.engines.lift_engine import LiftEngine
@@ -71,6 +72,7 @@ def _build_router() -> ExtractionRouter:
             ProviderRouterEngine(),
             LLMStructuredEngine(),
             InstructorEngine(),
+            FenicEngine(),
             LlamaExtractEngine(),
             AzureDocIntEngine(),
             GoogleDocAIEngine(),
