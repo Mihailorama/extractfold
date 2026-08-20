@@ -5,6 +5,7 @@ from __future__ import annotations
 from extractfold.engines.azure_docint_engine import AzureDocIntEngine
 from extractfold.engines.base import ExtractionEngine, ExtractionResult, ExtractionRouter
 from extractfold.engines.docfold_llm_engine import DocfoldLLMEngine
+from extractfold.engines.fenic_engine import FenicEngine
 from extractfold.engines.google_docai_engine import GoogleDocAIEngine
 from extractfold.engines.instructor_engine import InstructorEngine
 from extractfold.engines.lift_engine import LiftEngine
@@ -20,6 +21,7 @@ __all__ = [
     "ExtractionEngine",
     "ExtractionResult",
     "ExtractionRouter",
+    "FenicEngine",
     "GoogleDocAIEngine",
     "InstructorEngine",
     "LiftEngine",

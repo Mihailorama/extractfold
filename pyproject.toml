@@ -54,6 +54,9 @@ instructor = [
     "instructor>=1.6",
     "openai>=1.50",
 ]
+fenic = [
+    "fenic>=0.13",
+]
 llamaextract = [
     "llama-cloud-services>=0.6",
 ]
@@ -72,7 +75,7 @@ docfold_llm = [
 ]
 evaluation = []
 all = [
-    "extractfold[lift,nuextract,provider_router,llm_structured,instructor,llamaextract,azure_docint,google_docai,textract,docfold_llm,evaluation]",
+    "extractfold[lift,nuextract,provider_router,llm_structured,instructor,fenic,llamaextract,azure_docint,google_docai,textract,docfold_llm,evaluation]",
 ]
 test = [
     "pytest>=7.0",
@@ -94,6 +97,11 @@ Changelog = "https://github.com/mihailorama/extractfold/blob/main/CHANGELOG.md"
 
 [project.scripts]
 extractfold = "extractfold.cli:main"
+
+[tool.hatch.build.targets.sdist]
+# .claude contains symlinks that point outside the repo, which breaks
+# building a wheel from the sdist.
+exclude = [".claude", ".github"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/extractfold"]

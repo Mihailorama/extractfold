@@ -61,6 +61,7 @@ extractfold benchmark ./dataset --engines llm_structured,lift --out results.json
 | `provider_router` | Injected model gateway | App-defined | Prompt JSON | Yes | No | No | Remote | App-defined | App-defined |
 | `llm_structured` | LLM structured outputs | Provider terms | Tool/JSON mode | Yes | No | No | Remote | Medium | Paid tokens |
 | `instructor` | Pydantic/JSON extraction | MIT library + provider terms | Pydantic/JSON Schema | Yes | No | No | Remote by default | Medium | Paid tokens |
+| `fenic` | typedef-ai fenic `semantic.extract` | Apache-2.0 library + provider terms | Pydantic (converted from JSON Schema) | Yes | No | No | Remote by default | Medium | Paid tokens |
 | `llamaextract` | LlamaCloud Extract | SaaS | Native | Yes | No | No | Remote | Fast | Paid API |
 | `azure_docint` | Azure Document Intelligence | SaaS | Query fields | Limited | Yes | Yes | Remote | Fast | Paid API |
 | `google_docai` | Google Document AI | SaaS | Custom extractor/entities | Yes | Yes | Yes | Remote | Fast | Paid API |
@@ -76,6 +77,7 @@ extractfold benchmark ./dataset --engines llm_structured,lift --out results.json
 | First-party Datalab Lift workflow | `lift` |
 | Local/open-model extraction | `nuextract` |
 | Existing `instructor` stack | `instructor` |
+| Existing fenic dataframe pipelines | `fenic` |
 | Managed extraction SaaS | `llamaextract` |
 | Enterprise cloud OCR/forms/query fields | `azure_docint`, `google_docai`, or `textract` |
 | Clean Markdown/text before extraction | `docfold_llm` |
@@ -86,6 +88,7 @@ extractfold benchmark ./dataset --engines llm_structured,lift --out results.json
 from extractfold.engines import (
     AzureDocIntEngine,
     DocfoldLLMEngine,
+    FenicEngine,
     GoogleDocAIEngine,
     InstructorEngine,
     LiftEngine,
@@ -109,6 +112,7 @@ result = await LLMStructuredEngine(provider="anthropic").extract("invoice.pdf", 
 result = await LLMStructuredEngine(provider="openai").extract("invoice.pdf", "invoice")
 result = await LLMStructuredEngine(provider="gemini").extract("invoice.pdf", "invoice")
 result = await InstructorEngine().extract("invoice.pdf", "invoice")
+result = await FenicEngine().extract("invoice.txt", "invoice")
 result = await LlamaExtractEngine().extract("invoice.pdf", "invoice")
 result = await AzureDocIntEngine().extract("invoice.pdf", "invoice")
 result = await GoogleDocAIEngine().extract("invoice.pdf", "invoice")

@@ -13,6 +13,7 @@ def test_default_router_registers_required_engines() -> None:
         "provider_router",
         "llm_structured",
         "instructor",
+        "fenic",
         "llamaextract",
         "azure_docint",
         "google_docai",
