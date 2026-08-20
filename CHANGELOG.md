@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-20
+
+### Fixed
+- Publish releases through a dedicated OIDC PyPI workflow so release tags do
+  not depend on the general test workflow.
+
 ## [0.1.0] - 2026-08-19
 
 ### Added
