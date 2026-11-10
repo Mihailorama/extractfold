@@ -106,6 +106,8 @@ async def provider_call(**kwargs):
     return {"invoice_id": "INV-001", "total": 125.5}
 
 result = await ProviderRouterEngine(provider_call=provider_call).extract("invoice.txt", "invoice")
+# Ordered cross-provider fallback chain: each entry is passed as model= to provider_call.
+engine = ProviderRouterEngine(provider_call=provider_call, models=["claude-haiku-5-5", "gemini-3.8-flash"])
 result = await LiftEngine().extract("invoice.pdf", "invoice")
 result = await NuExtractEngine(backend="hf").extract("invoice.txt", "invoice")
 result = await LLMStructuredEngine(provider="anthropic").extract("invoice.pdf", "invoice")

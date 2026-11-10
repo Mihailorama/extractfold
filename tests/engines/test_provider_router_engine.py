@@ -108,3 +108,46 @@ async def test_provider_router_uses_direct_text_override(tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_provider_router_real_integration() -> None:
     await ProviderRouterEngine().extract("tests/fixtures/invoice.txt", "invoice")
+
+
+@pytest.mark.asyncio
+async def test_provider_router_model_chain_falls_back_to_the_next_model() -> None:
+    tried: list[Any] = []
+
+    async def provider_call(**kwargs: Any) -> dict[str, Any]:
+        tried.append(kwargs["model"])
+        if kwargs["model"] == "primary":
+            raise RuntimeError("primary down")
+        return {"invoice_id": "INV-002", "total": 7}
+
+    engine = ProviderRouterEngine(
+        provider="gateway",
+        models=["primary", {"model": "backup", "api_key": "k"}],
+        provider_call=provider_call,
+    )
+    result = await engine.extract_text("Invoice INV-002 total 7", INVOICE_SCHEMA)
+
+    assert tried == ["primary", {"model": "backup", "api_key": "k"}]
+    assert result.data["invoice_id"] == "INV-002"
+    assert result.metadata["model"] == "backup"  # call settings (keys) never reach metadata
+    assert result.metadata["fallbacks"] == [{"model": "primary", "error": "primary down"}]
+
+
+@pytest.mark.asyncio
+async def test_provider_router_model_chain_raises_when_every_model_fails() -> None:
+    async def provider_call(**kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError(f"{kwargs['model']} down")
+
+    engine = ProviderRouterEngine(models=["a", "b"], provider_call=provider_call)
+    with pytest.raises(RuntimeError, match="b down"):
+        await engine.extract_text("text", INVOICE_SCHEMA)
+
+
+@pytest.mark.asyncio
+async def test_provider_router_unparseable_answer_moves_to_the_next_model() -> None:
+    async def provider_call(**kwargs: Any) -> Any:
+        return "no json here" if kwargs["model"] == "a" else '{"invoice_id": "X"}'
+
+    engine = ProviderRouterEngine(models=["a", "b"], provider_call=provider_call)
+    result = await engine.extract_text("text", INVOICE_SCHEMA)
+    assert result.data["invoice_id"] == "X" and result.metadata["model"] == "b"

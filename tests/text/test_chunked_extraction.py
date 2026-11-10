@@ -228,3 +228,46 @@ async def test_extract_rows_chunked_can_continue_after_failed_chunks() -> None:
     assert chunking["chunks"][1]["rows_added"] == 0
     assert chunking["chunks"][1]["duplicates_removed"] == 0
     assert chunking["chunks"][2]["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_keeps_identical_rows_when_dedupe_is_off() -> None:
+    line = {"name": "Radiator", "qty": 2}
+    engine = ChunkAwareEngine({"a": [line, line], "b": [line]})
+    result = await extract_rows_chunked(
+        "ab",
+        [{"name": "", "qty": 0}],
+        engine=engine,
+        chunks=[_chunk("a", 0, 0, 1), _chunk("b", 1, 1, 2)],
+        dedupe=False,
+    )
+    assert result.data["rows"] == [line, line, line]
+    assert result.metadata["chunking"]["duplicates_removed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_runs_chunks_concurrently_in_order() -> None:
+    import asyncio
+
+    running = 0
+    peak = 0
+
+    class SlowEngine(ChunkAwareEngine):
+        async def extract_text(self, text: str, schema, **kwargs: Any) -> ExtractionResult:
+            nonlocal running, peak
+            running += 1
+            peak = max(peak, running)
+            await asyncio.sleep(0.01)
+            running -= 1
+            return await super().extract_text(text, schema, **kwargs)
+
+    engine = SlowEngine({"a": [{"n": 1}], "b": [{"n": 2}], "c": [{"n": 3}]})
+    result = await extract_rows_chunked(
+        "abc",
+        [{"n": 0}],
+        engine=engine,
+        chunks=[_chunk("a", 0, 0, 1), _chunk("b", 1, 1, 2), _chunk("c", 2, 2, 3)],
+        concurrency=3,
+    )
+    assert peak == 3
+    assert result.data["rows"] == [{"n": 1}, {"n": 2}, {"n": 3}]

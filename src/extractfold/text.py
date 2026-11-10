@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import time
@@ -101,9 +102,17 @@ async def extract_rows_chunked(
     max_chars: int | None = None,
     overlap: int = 0,
     continue_on_error: bool = False,
+    dedupe: bool = True,
+    concurrency: int = 1,
     **kwargs: Any,
 ) -> ExtractionResult:
-    """Extract structured rows from prepared text with chunked orchestration."""
+    """Extract structured rows from prepared text with chunked orchestration.
+
+    ``dedupe=False`` keeps identical rows (line items repeat legitimately; chunks without
+    overlap produce no duplicates). ``concurrency > 1`` extracts up to that many chunks at
+    once; rows still come back in chunk order, but engines then get no
+    ``previous_chunk_digest``.
+    """
     start = time.perf_counter()
     conversion = _load_or_convert_row_schema(schema)
     row_schema = conversion.schema
@@ -119,16 +128,41 @@ async def extract_rows_chunked(
     succeeded_chunks = 0
     previous_digest: str | None = None
 
-    for chunk in planned_chunks:
+    prefetched: list[Any] | None = None
+    if concurrency > 1 and len(planned_chunks) > 1:
+        limit = asyncio.Semaphore(concurrency)
+
+        async def _one(chunk: TextChunk) -> ExtractionResult:
+            async with limit:
+                return await extract_rows(
+                    chunk.text,
+                    row_schema,
+                    engine=engine,
+                    chunk=chunk.to_dict(),
+                    previous_chunk_digest=None,
+                    **kwargs,
+                )
+
+        prefetched = await asyncio.gather(
+            *(_one(c) for c in planned_chunks), return_exceptions=True
+        )
+
+    for index, chunk in enumerate(planned_chunks):
         try:
-            chunk_result = await extract_rows(
-                chunk.text,
-                row_schema,
-                engine=engine,
-                chunk=chunk.to_dict(),
-                previous_chunk_digest=previous_digest,
-                **kwargs,
-            )
+            if prefetched is not None:
+                outcome = prefetched[index]
+                if isinstance(outcome, BaseException):
+                    raise outcome
+                chunk_result = outcome
+            else:
+                chunk_result = await extract_rows(
+                    chunk.text,
+                    row_schema,
+                    engine=engine,
+                    chunk=chunk.to_dict(),
+                    previous_chunk_digest=previous_digest,
+                    **kwargs,
+                )
             chunk_rows = chunk_result.data.get("rows", [])
             if not isinstance(chunk_rows, list):
                 raise ValueError("Chunk extraction expected an object with a 'rows' list")
@@ -158,7 +192,7 @@ async def extract_rows_chunked(
         duplicates = 0
         for row in chunk_rows:
             row_key = _row_key(row)
-            if row_key in seen:
+            if dedupe and row_key in seen:
                 duplicates += 1
                 continue
             seen.add(row_key)
