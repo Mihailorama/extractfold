@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `ProviderRouterEngine(models=[...])`: ordered cross-provider fallback chain; a model
+  that raises or answers without parseable JSON hands the call to the next one.
+  `metadata["model"]` / `metadata["fallbacks"]` report which model answered.
+- `extract_rows_chunked(..., dedupe=False)` keeps identical rows (repeated line items);
+  `concurrency=N` extracts N chunks at once, rows stay in chunk order.
+
 ## [0.1.1] - 2026-08-20
 
 ### Fixed
