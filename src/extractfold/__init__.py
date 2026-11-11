@@ -16,7 +16,7 @@ from extractfold.engines.base import (
 from extractfold.schema import SchemaConversionResult, infer_schema, template_to_schema
 from extractfold.text import extract_rows_chunked
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "BatchExtractionResult",
