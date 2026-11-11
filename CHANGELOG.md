@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-11
+
 ### Added
 - `ProviderRouterEngine(models=[...])`: ordered cross-provider fallback chain; a model
   that raises or answers without parseable JSON hands the call to the next one.
