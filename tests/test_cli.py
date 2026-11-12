@@ -60,7 +60,7 @@ def test_no_args_prints_help(capsys) -> None:
 
 
 def test_list_engines_prints_table(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(cli, "_build_router", lambda: StubRouter())
+    monkeypatch.setattr(cli, "_build_router", lambda *a, **k: StubRouter())
 
     cli.main(["list-engines"])
 
@@ -71,7 +71,7 @@ def test_list_engines_prints_table(monkeypatch, capsys) -> None:
 
 
 def test_extract_prints_json(monkeypatch, tmp_path, capsys) -> None:
-    monkeypatch.setattr(cli, "_build_router", lambda: StubRouter())
+    monkeypatch.setattr(cli, "_build_router", lambda *a, **k: StubRouter())
     doc = tmp_path / "invoice.txt"
     doc.write_text("invoice", encoding="utf-8")
     schema = tmp_path / "schema.json"
@@ -85,7 +85,7 @@ def test_extract_prints_json(monkeypatch, tmp_path, capsys) -> None:
 
 
 def test_extract_writes_output_file(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(cli, "_build_router", lambda: StubRouter())
+    monkeypatch.setattr(cli, "_build_router", lambda *a, **k: StubRouter())
     doc = tmp_path / "invoice.txt"
     doc.write_text("invoice", encoding="utf-8")
     out = tmp_path / "result.json"
@@ -97,7 +97,7 @@ def test_extract_writes_output_file(monkeypatch, tmp_path) -> None:
 
 
 def test_compare_prints_field_agreement(monkeypatch, tmp_path, capsys) -> None:
-    monkeypatch.setattr(cli, "_build_router", lambda: StubRouter())
+    monkeypatch.setattr(cli, "_build_router", lambda *a, **k: StubRouter())
     doc = tmp_path / "invoice.txt"
     doc.write_text("invoice", encoding="utf-8")
 

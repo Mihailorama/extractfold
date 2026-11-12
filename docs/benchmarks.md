@@ -12,7 +12,7 @@ dataset/
 Run:
 
 ```bash
-extractfold benchmark dataset --engines llm_structured,lift --out results.json
+extractfold --llm-model claude-haiku-5-5 benchmark dataset --engines llm_structured,lift --out results.json
 ```
 
 ## Capability Matrix
@@ -22,7 +22,7 @@ extractfold benchmark dataset --engines llm_structured,lift --out results.json
 | lift | Yes | Yes | Yes | No | Yes | Reference SaaS adapter |
 | nuextract | No | No | Yes | Yes | No | Requires local HF/vLLM runtime |
 | provider_router | Yes | Yes | Yes | No | Yes | Injected callable; provenance with `source_catalog=`; cost and latency come from caller metadata |
-| llm_structured | No | No | Yes | No | Yes | Anthropic default; OpenAI/Gemini supported |
+| llm_structured | No | No | Yes | No | Yes | Anthropic, OpenAI or Gemini; `model=` required |
 | instructor | No | No | Yes | No | Yes | Uses provider chat model through instructor |
 | llamaextract | No | No | Yes | No | Yes | LlamaCloud Extract |
 | azure_docint | Yes | Yes | Limited | No | Yes | Query-field/form extraction |

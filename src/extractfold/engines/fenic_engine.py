@@ -83,6 +83,8 @@ class FenicEngine(ExtractionEngine):
     def is_available(self) -> bool:
         if self._extractor is not None:
             return True
+        if not self._model:
+            return False
         try:
             import fenic  # noqa: F401
         except ImportError:
@@ -128,21 +130,23 @@ class FenicEngine(ExtractionEngine):
         return extracted
 
     def _semantic_config(self, fc: Any) -> Any:
+        if not self._model:
+            raise ValueError("fenic engine needs model=; it has no default model")
         # fenic requires per-provider rate limits; keep conservative defaults.
         if os.getenv("OPENAI_API_KEY"):
             language_model = fc.OpenAILanguageModel(
-                model_name=self._model or "gpt-4o-mini", rpm=100, tpm=100_000
+                model_name=self._model, rpm=100, tpm=100_000
             )
         elif os.getenv("ANTHROPIC_API_KEY"):
             language_model = fc.AnthropicLanguageModel(
-                model_name=self._model or "claude-haiku-4-5",
+                model_name=self._model,
                 rpm=100,
                 input_tpm=100_000,
                 output_tpm=100_000,
             )
         elif os.getenv("GOOGLE_API_KEY"):
             language_model = fc.GoogleDeveloperLanguageModel(
-                model_name=self._model or "gemini-2.5-flash", rpm=100, tpm=100_000
+                model_name=self._model, rpm=100, tpm=100_000
             )
         else:
             raise RuntimeError(

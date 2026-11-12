@@ -3,16 +3,20 @@ from __future__ import annotations
 import pytest
 
 from extractfold.engines.llm_structured_engine import (
-    DEFAULT_ANTHROPIC_MODEL,
     LLMStructuredEngine,
     extract_json_object,
 )
 
 from .helpers import INVOICE_SCHEMA, write_document
 
+MODEL = "claude-haiku-5-5"
 
-def test_default_model_uses_latest_general_anthropic_model() -> None:
-    assert DEFAULT_ANTHROPIC_MODEL == "claude-fable-5"
+
+def test_model_is_required() -> None:
+    with pytest.raises(TypeError):
+        LLMStructuredEngine()  # type: ignore[call-arg]
+    with pytest.raises(ValueError):
+        LLMStructuredEngine(model="")
 
 
 def test_extract_json_object_recovers_fenced_json() -> None:
@@ -27,11 +31,11 @@ async def test_llm_structured_anthropic_stubbed_call(tmp_path) -> None:
 
     async def provider_call(**kwargs):
         assert kwargs["provider"] == "anthropic"
-        assert kwargs["model"] == DEFAULT_ANTHROPIC_MODEL
+        assert kwargs["model"] == MODEL
         assert kwargs["schema"] == INVOICE_SCHEMA
         return {"invoice_id": "INV-001", "vendor": "Acme", "total": 125.5}
 
-    result = await LLMStructuredEngine(provider_call=provider_call).extract(
+    result = await LLMStructuredEngine(model=MODEL, provider_call=provider_call).extract(
         str(doc),
         INVOICE_SCHEMA,
     )
@@ -51,7 +55,8 @@ async def test_llm_structured_other_providers_parse_json(provider, tmp_path) -> 
         assert kwargs["provider"] == provider
         return '{"invoice_id": "INV-001", "vendor": "Acme", "total": 125.5}'
 
-    result = await LLMStructuredEngine(provider=provider, provider_call=provider_call).extract(
+    engine = LLMStructuredEngine(provider=provider, model="m", provider_call=provider_call)
+    result = await engine.extract(
         str(doc),
         INVOICE_SCHEMA,
     )
@@ -64,7 +69,7 @@ async def test_llm_structured_other_providers_parse_json(provider, tmp_path) -> 
 @pytest.mark.skip(reason="requires provider API key and network access")
 @pytest.mark.asyncio
 async def test_llm_structured_real_anthropic_integration() -> None:
-    await LLMStructuredEngine().extract("tests/fixtures/invoice.pdf", "invoice")
+    await LLMStructuredEngine(model=MODEL).extract("tests/fixtures/invoice.pdf", "invoice")
 
 
 class _Block:

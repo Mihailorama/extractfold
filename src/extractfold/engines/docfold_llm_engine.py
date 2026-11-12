@@ -12,7 +12,6 @@ from extractfold.engines.base import (
     ExtractionResult,
     load_schema,
 )
-from extractfold.engines.llm_structured_engine import LLMStructuredEngine
 
 _SUPPORTED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "docx", "txt", "md", "html"}
 
@@ -49,13 +48,17 @@ class DocfoldLLMEngine(ExtractionEngine):
             import docfold  # noqa: F401
         except ImportError:
             return False
-        return LLMStructuredEngine().is_available()
+        return self._llm_engine is not None and bool(self._llm_engine.is_available())
 
     async def extract(self, file_path: str, schema, **kwargs: Any) -> ExtractionResult:
         schema_obj = load_schema(schema)
         start = time.perf_counter()
         content = await maybe_await(self._run_docfold(file_path, **kwargs))
-        llm_engine = self._llm_engine or LLMStructuredEngine()
+        llm_engine = self._llm_engine
+        if llm_engine is None:
+            raise ValueError(
+                "docfold_llm needs llm_engine=, e.g. LLMStructuredEngine(model='claude-haiku-5-5')"
+            )
         if not hasattr(llm_engine, "extract_text"):
             raise RuntimeError("llm_engine must provide extract_text(text, schema, **kwargs)")
         llm_result = await maybe_await(llm_engine.extract_text(content, schema_obj, **kwargs))

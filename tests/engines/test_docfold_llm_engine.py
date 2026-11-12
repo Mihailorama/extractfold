@@ -44,3 +44,13 @@ async def test_docfold_llm_runs_docfold_then_llm(tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_docfold_llm_real_integration() -> None:
     await DocfoldLLMEngine().extract("tests/fixtures/invoice.pdf", "invoice")
+
+
+@pytest.mark.asyncio
+async def test_docfold_llm_has_no_default_llm(tmp_path) -> None:
+    doc = write_document(tmp_path)
+    engine = DocfoldLLMEngine(docfold_runner=lambda path, **kw: "Invoice")
+
+    assert engine.is_available() is False
+    with pytest.raises(ValueError, match="llm_engine"):
+        await engine.extract(str(doc), INVOICE_SCHEMA)
