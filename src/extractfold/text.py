@@ -21,6 +21,7 @@ from extractfold.engines.base import (
     load_schema,
     validate_data,
 )
+from extractfold.prescan import PreScan
 from extractfold.quality import check_rows
 from extractfold.schema import SchemaConversionResult, template_to_schema
 
@@ -113,6 +114,9 @@ async def extract_rows_chunked(
     continue_on_error: bool = False,
     dedupe: bool = True,
     concurrency: int = 1,
+    prescan: PreScan | None = None,
+    rerun_below: float | None = None,
+    rerun_engine: ExtractionEngine | None = None,
     **kwargs: Any,
 ) -> ExtractionResult:
     """Extract structured rows from prepared text with chunked orchestration.
@@ -121,6 +125,12 @@ async def extract_rows_chunked(
     overlap produce no duplicates). ``concurrency > 1`` extracts up to that many chunks at
     once; rows still come back in chunk order, but engines then get no
     ``previous_chunk_digest``.
+
+    Row-count control: a chunk's expected rows come from ``chunk.metadata["estimated_rows"]``,
+    or, for a single chunk, from ``prescan.expected_rows``. A *prescan* also reaches every
+    chunk call as ``context=``. With *rerun_below* (e.g. ``0.8``) a chunk returning fewer
+    than that share of its expected rows is extracted again with *rerun_engine* (default
+    *engine*) and the longer answer is kept.
     """
     start = time.perf_counter()
     conversion = _load_or_convert_row_schema(schema)
@@ -137,7 +147,32 @@ async def extract_rows_chunked(
     succeeded_chunks = 0
     truncated_chunks = 0
     columns = _columns(row_schema)
+    rerun_chunks = 0
     previous_digest: str | None = None
+    prescan_context = prescan.context() if prescan else ""
+
+    def _expected(chunk: TextChunk) -> int | None:
+        estimate = chunk.metadata.get("estimated_rows")
+        if isinstance(estimate, int):
+            return estimate
+        return prescan.expected_rows if prescan and len(planned_chunks) == 1 else None
+
+    async def _call(
+        chunk: TextChunk, digest: str | None, use: ExtractionEngine
+    ) -> ExtractionResult:
+        context = "\n\n".join(
+            part for part in (prescan_context, chunk.metadata.get("context")) if part
+        )
+        extra = {"context": context} if context else {}
+        return await extract_rows(
+            chunk.text,
+            row_schema,
+            engine=use,
+            chunk=chunk.to_dict(),
+            previous_chunk_digest=digest,
+            **extra,
+            **kwargs,
+        )
 
     prefetched: list[Any] | None = None
     if concurrency > 1 and len(planned_chunks) > 1:
@@ -145,14 +180,7 @@ async def extract_rows_chunked(
 
         async def _one(chunk: TextChunk) -> ExtractionResult:
             async with limit:
-                return await extract_rows(
-                    chunk.text,
-                    row_schema,
-                    engine=engine,
-                    chunk=chunk.to_dict(),
-                    previous_chunk_digest=None,
-                    **kwargs,
-                )
+                return await _call(chunk, None, engine)
 
         prefetched = await asyncio.gather(
             *(_one(c) for c in planned_chunks), return_exceptions=True
@@ -166,14 +194,7 @@ async def extract_rows_chunked(
                     raise outcome
                 chunk_result = outcome
             else:
-                chunk_result = await extract_rows(
-                    chunk.text,
-                    row_schema,
-                    engine=engine,
-                    chunk=chunk.to_dict(),
-                    previous_chunk_digest=previous_digest,
-                    **kwargs,
-                )
+                chunk_result = await _call(chunk, previous_digest, engine)
             if isinstance(chunk_result.metadata.get("error"), dict):
                 raise _LLMFailureError(chunk_result.metadata["error"])
             chunk_rows = chunk_result.data.get("rows", [])
@@ -202,6 +223,26 @@ async def extract_rows_chunked(
             failed_chunks += 1
             continue
 
+        expected = _expected(chunk)
+        rerun: dict[str, Any] | None = None
+        if rerun_below is not None and expected and len(chunk_rows) < rerun_below * expected:
+            # ponytail: re-runs go one at a time, even with concurrency; batch them if slow.
+            use = rerun_engine or engine
+            try:
+                retry = await _call(chunk, previous_digest, use)
+                retry_rows = retry.data.get("rows", [])
+                if retry.metadata.get("error") or not isinstance(retry_rows, list):
+                    retry_rows = []
+            except Exception:
+                if not continue_on_error:
+                    raise
+                retry_rows = []
+            kept = len(retry_rows) > len(chunk_rows)
+            rerun = {"engine": use.name, "rows": len(retry_rows), "kept": kept}
+            rerun_chunks += 1
+            if kept:
+                chunk_result, chunk_rows = retry, retry_rows
+
         added = 0
         duplicates = 0
         for row in chunk_rows:
@@ -221,7 +262,9 @@ async def extract_rows_chunked(
                 "previous_chunk_digest": previous_digest,
                 "status": "succeeded",
                 "truncated": truncated,
-                "checks": check_rows(chunk_rows, columns=columns),
+                "checks": check_rows(chunk_rows, columns=columns, expected_rows=expected),
+                "expected_rows": expected,
+                **({"rerun": rerun} if rerun else {}),
                 "rows_returned": len(chunk_rows),
                 "rows_added": added,
                 "duplicates_removed": duplicates,
@@ -237,6 +280,17 @@ async def extract_rows_chunked(
 
     data = {"rows": rows}
     validation = validate_data(data, result_schema)
+    control: dict[str, Any] = {}
+    if prescan is not None:
+        control["prescan"] = prescan.to_dict()
+        if prescan.expected_rows is not None:
+            check = check_rows(rows, expected_rows=prescan.expected_rows)[0]
+            control["row_count"] = {
+                "expected": prescan.expected_rows,
+                "extracted": len(rows),
+                "status": check["status"],
+                "message": check["message"],
+            }
     return ExtractionResult(
         data=data,
         engine_name=engine.name,
@@ -255,8 +309,10 @@ async def extract_rows_chunked(
                 "rows_extracted": len(rows),
                 "duplicates_removed": total_duplicates,
                 "truncated_chunks": truncated_chunks,
+                "rerun_chunks": rerun_chunks,
                 "chunks": chunk_metadata,
             },
+            **control,
         },
         processing_time_ms=int((time.perf_counter() - start) * 1000),
     )

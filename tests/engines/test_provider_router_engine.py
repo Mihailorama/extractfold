@@ -224,3 +224,19 @@ async def test_provider_router_returns_a_structured_llm_failure_when_asked() -> 
     assert result.metadata["error"] == {"stage": "llm", "model": "b", "message": "b down"}
     assert result.metadata["fallbacks"] == [{"model": "a", "error": "a down"}]
     assert "secret" not in repr(result.metadata)
+
+
+@pytest.mark.asyncio
+async def test_provider_router_default_prompt_carries_context() -> None:
+    prompts: list[str] = []
+
+    def provider_call(**kwargs: Any) -> dict[str, Any]:
+        prompts.append(kwargs["prompt"])
+        return {"invoice_id": "A", "total": 1}
+
+    engine = ProviderRouterEngine(provider_call=provider_call)
+    await engine.extract_text("text", INVOICE_SCHEMA, context="Document structure: table")
+    await engine.extract_text("text", INVOICE_SCHEMA)
+
+    assert "Context:\nDocument structure: table\n\nSource text:\ntext" in prompts[0]
+    assert "Context:" not in prompts[1]

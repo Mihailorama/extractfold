@@ -172,11 +172,13 @@ class ProviderRouterEngine(ExtractionEngine):
                 model=self._model,
                 **kwargs,
             )
+        context = kwargs.get("context")
         return (
             "Extract structured data from the source text. Return only JSON that conforms "
             "to this JSON Schema.\n\n"
             f"Schema:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
-            f"Source text:\n{text}"
+            + (f"Context:\n{context}\n\n" if context else "")
+            + f"Source text:\n{text}"
         )
 
     def _metadata(self, raw: Any) -> dict[str, Any]:

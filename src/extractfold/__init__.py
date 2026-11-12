@@ -13,6 +13,7 @@ from extractfold.engines.base import (
     load_schema,
     validate_data,
 )
+from extractfold.prescan import PreScan, prescan
 from extractfold.quality import check_rows
 from extractfold.schema import SchemaConversionResult, infer_schema, template_to_schema
 from extractfold.text import extract_rows_chunked
@@ -25,6 +26,7 @@ __all__ = [
     "ExtractionEngine",
     "ExtractionResult",
     "ExtractionRouter",
+    "PreScan",
     "SchemaConversionResult",
     "SchemaValidationResult",
     "TextChunk",
@@ -37,6 +39,7 @@ __all__ = [
     "extract_rows_chunked",
     "infer_schema",
     "load_schema",
+    "prescan",
     "template_to_schema",
     "validate_data",
 ]
