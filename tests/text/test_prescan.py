@@ -145,3 +145,17 @@ async def test_rerun_keeps_the_first_answer_when_the_rerun_is_not_longer() -> No
     assert chunk["rerun"] == {"engine": "e", "rows": 1, "kept": False}
     assert [c["status"] for c in chunk["checks"] if c["check"] == "row_count"] == ["failed"]
     assert result.metadata["row_count"]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_prescan_keeps_the_complete_part_of_a_truncated_answer() -> None:
+    answer = json.dumps(_ANSWER)
+    cut = answer[: answer.index('"suggested_chunk_boundaries"') - 40]
+
+    result = await prescan("text", llm=lambda prompt: cut)
+
+    assert result.error is None and result.repaired is True
+    assert result.columns == ["name", "qty"] and result.structure == "table"
+    assert len(result.control_values) == 1  # the half-written second value is dropped
+    assert result.to_dict()["repaired"] is True
+    assert (await prescan("text", llm=lambda p: json.dumps(_ANSWER))).repaired is False
