@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from extractfold.canonical import canonical_extract
 from extractfold.chunking import (
     TextChunk,
     chunk_budget,
@@ -11,6 +12,8 @@ from extractfold.chunking import (
     chunk_sections,
     chunk_text,
 )
+from extractfold.codegen import extract_tables_with_code
+from extractfold.discovery import classify_document, propose_schema, shared_context
 from extractfold.engines.base import (
     BatchExtractionResult,
     ExtractionCapabilities,
@@ -21,14 +24,16 @@ from extractfold.engines.base import (
     load_schema,
     validate_data,
 )
+from extractfold.entities import extract_entities
 from extractfold.parsing import parse_llm_json
 from extractfold.prescan import PreScan, prescan
 from extractfold.provenance import align_provenance, build_source_catalog
 from extractfold.quality import check_rows
+from extractfold.rules import check_rules, suggest_rules
 from extractfold.schema import SchemaConversionResult, infer_schema, template_to_schema
 from extractfold.text import extract_rows_chunked
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "BatchExtractionResult",
@@ -43,18 +48,26 @@ __all__ = [
     "__version__",
     "align_provenance",
     "build_source_catalog",
+    "canonical_extract",
+    "check_rows",
+    "check_rules",
+    "chunk_budget",
+    "chunk_document",
     "chunk_json_array",
     "chunk_rows",
     "chunk_sections",
-    "check_rows",
-    "chunk_budget",
-    "chunk_document",
     "chunk_text",
+    "classify_document",
+    "extract_entities",
     "extract_rows_chunked",
+    "extract_tables_with_code",
     "infer_schema",
     "load_schema",
     "parse_llm_json",
     "prescan",
+    "propose_schema",
+    "shared_context",
+    "suggest_rules",
     "template_to_schema",
     "validate_data",
 ]

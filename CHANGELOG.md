@@ -6,7 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-12
+
+### Added
+- `extractfold.postprocess`: `drop_rows_missing`, `merge_rows`, `compute_fields`,
+  `map_to_reference`; each returns `(rows, {step, changed, changes})` (#10).
+- `extractfold.rules`: `check_rules(tables, rules)` returns one uniform check per rule
+  (`not_empty`, `unique`, `range`, `pattern`, `allowed`, `schema`, `expression`,
+  cross-table `sum_equals`, `reference`); `suggest_rules(tables, llm=)` (#11).
+- `extractfold.discovery`: `propose_schema` (single or linked tables),
+  `classify_document`, `shared_context` (#12).
+- `extract_entities(text, llm=)`: schema-less entities (#13).
+- `extract_tables_with_code(tables, schema, llm=, sandbox=)`: scout / worker / validator /
+  schema-enricher roles; generated code runs only in the caller's sandbox and the call
+  refuses without one (#14).
+- `canonical_extract(text, llm=)`: header fields, sections, line items and quality
+  metrics (#15).
+- `extract_rows_chunked(expected_rows=)`: an int (document row count) or a callable
+  `chunk -> int | None` overrides format estimates and the pre-scan count, so header
+  schemas over tables are not re-run (#31).
+
 ### Fixed
+- `prescan()` keeps the complete part of an answer cut at the token limit
+  (`PreScan.repaired`) and asks for at most 20 control values (#32).
 - `llm_structured` (Anthropic) no longer sends `temperature` unless the caller passes it
   (current Claude models reject it) and reads only text blocks of the answer.
 - CI type-checks with the `llm_structured` and `lift` extras installed.
