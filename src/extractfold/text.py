@@ -12,7 +12,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Protocol, runtime_checkable
 
-from extractfold.chunking import TextChunk, chunk_text
+from extractfold.chunking import TextChunk, chunk_document, chunk_text
 from extractfold.engines._common import maybe_await
 from extractfold.engines.base import (
     ExtractionEngine,
@@ -117,6 +117,8 @@ async def extract_rows_chunked(
     prescan: PreScan | None = None,
     rerun_below: float | None = None,
     rerun_engine: ExtractionEngine | None = None,
+    input_format: str | None = None,
+    max_rows: int | None = None,
     **kwargs: Any,
 ) -> ExtractionResult:
     """Extract structured rows from prepared text with chunked orchestration.
@@ -131,11 +133,39 @@ async def extract_rows_chunked(
     chunk call as ``context=``. With *rerun_below* (e.g. ``0.8``) a chunk returning fewer
     than that share of its expected rows is extracted again with *rerun_engine* (default
     *engine*) and the longer answer is kept.
+
+    With *input_format* (``spreadsheet``, ``csv``, ``json``, ``html``, ``markdown``, ...)
+    chunks are planned by :func:`extractfold.chunking.chunk_document` within *max_chars*
+    and *max_rows* (see :func:`extractfold.chunking.chunk_budget`). A JSON array of objects
+    whose keys are all schema fields is returned as is, without a model call
+    (``metadata["passthrough"]``).
     """
     start = time.perf_counter()
     conversion = _load_or_convert_row_schema(schema)
     row_schema = conversion.schema
     result_schema = _row_result_schema(row_schema)
+    if chunks is None and input_format in (None, "json"):
+        passthrough = _flat_json_rows(text, row_schema)
+        if passthrough is not None:
+            data = {"rows": passthrough}
+            return ExtractionResult(
+                data=data,
+                engine_name=engine.name,
+                schema=result_schema,
+                valid=validate_data(data, result_schema).valid,
+                metadata={
+                    "row_schema": row_schema,
+                    "schema_conversion": conversion.metadata,
+                    "passthrough": True,
+                },
+                processing_time_ms=int((time.perf_counter() - start) * 1000),
+            )
+    if chunks is None and input_format is not None:
+        if max_chars is None:
+            raise ValueError("extract_rows_chunked requires max_chars with input_format")
+        chunks = chunk_document(
+            text, input_format=input_format, max_chars=max_chars, max_rows=max_rows
+        )
     planned_chunks = _resolve_chunks(text, chunks=chunks, max_chars=max_chars, overlap=overlap)
 
     rows: list[Any] = []
@@ -316,6 +346,28 @@ async def extract_rows_chunked(
         },
         processing_time_ms=int((time.perf_counter() - start) * 1000),
     )
+
+
+def _flat_json_rows(text: str, row_schema: JsonSchema) -> list[dict[str, Any]] | None:
+    """Rows of a JSON array of objects that already use only the schema's fields."""
+    stripped = text.lstrip()
+    if not stripped.startswith("["):
+        return None
+    fields = set(_columns(row_schema))
+    try:
+        rows = json.loads(stripped)
+    except ValueError:
+        return None
+    if not fields or not isinstance(rows, list) or not rows:
+        return None
+    if not all(isinstance(row, dict) and row and set(row) <= fields for row in rows):
+        return None
+    item_schema = row_schema.get("items", row_schema) if row_schema.get("type") == "array" else (
+        row_schema
+    )
+    if not all(validate_data(row, item_schema).valid for row in rows):
+        return None
+    return rows
 
 
 def _resolve_chunks(

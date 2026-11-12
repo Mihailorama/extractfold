@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from extractfold.chunking import TextChunk, chunk_json_array, chunk_rows, chunk_sections, chunk_text
+from extractfold.chunking import (
+    TextChunk,
+    chunk_budget,
+    chunk_document,
+    chunk_json_array,
+    chunk_rows,
+    chunk_sections,
+    chunk_text,
+)
 from extractfold.engines.base import (
     BatchExtractionResult,
     ExtractionCapabilities,
@@ -35,6 +43,8 @@ __all__ = [
     "chunk_rows",
     "chunk_sections",
     "check_rows",
+    "chunk_budget",
+    "chunk_document",
     "chunk_text",
     "extract_rows_chunked",
     "infer_schema",

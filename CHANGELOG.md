@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `chunk_document(text, input_format=, max_chars=, max_rows=)`: format-aware chunks
+  that never cut a row, line or page: spreadsheet text (`Sheet: <name>` sections, per-sheet
+  row ranges, carried-over sheet and section-header `context`), CSV (quote-aware, header
+  on every chunk), JSON arrays, HTML page nodes, Markdown sections; each chunk has
+  `estimated_rows`.
+- `chunk_budget(text, max_input_tokens=, max_output_tokens=)`: `max_chars` / `max_rows`
+  from a model's limits.
+- `extract_rows_chunked(input_format=, max_rows=)` plans chunks with `chunk_document`;
+  a JSON array of objects that already uses only the schema's fields passes through
+  without a model call (`metadata["passthrough"]`).
 - `prescan(text, llm=)`: one call over the document's head and tail returns a `PreScan`
   (columns, types, structure, control values, `expected_rows`, prompt `context()`).
 - `extract_rows_chunked(prescan=, rerun_below=, rerun_engine=)`: the pre-scan context
