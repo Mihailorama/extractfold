@@ -21,6 +21,7 @@ from extractfold.engines.base import (
     load_schema,
     validate_data,
 )
+from extractfold.quality import check_rows
 from extractfold.schema import SchemaConversionResult, template_to_schema
 
 
@@ -70,6 +71,14 @@ async def extract_rows(
     conversion = _load_or_convert_row_schema(schema)
     row_schema = conversion.schema
     result = await extract_text(text, row_schema, engine=engine, **kwargs)
+    if isinstance(result.metadata.get("error"), dict) and not result.data:
+        return replace(
+            result,
+            data={"rows": []},
+            schema=_row_result_schema(row_schema),
+            valid=False,
+            metadata=_merge_row_metadata(result.metadata, row_schema, conversion.metadata),
+        )
     if isinstance(result.data, dict) and isinstance(result.data.get("rows"), list):
         wrapped_schema = _row_result_schema(row_schema)
         validation = validate_data(result.data, wrapped_schema)
@@ -126,6 +135,8 @@ async def extract_rows_chunked(
     total_duplicates = 0
     failed_chunks = 0
     succeeded_chunks = 0
+    truncated_chunks = 0
+    columns = _columns(row_schema)
     previous_digest: str | None = None
 
     prefetched: list[Any] | None = None
@@ -163,11 +174,14 @@ async def extract_rows_chunked(
                     previous_chunk_digest=previous_digest,
                     **kwargs,
                 )
+            if isinstance(chunk_result.metadata.get("error"), dict):
+                raise _LLMFailureError(chunk_result.metadata["error"])
             chunk_rows = chunk_result.data.get("rows", [])
             if not isinstance(chunk_rows, list):
                 raise ValueError("Chunk extraction expected an object with a 'rows' list")
         except Exception as exc:
-            if not continue_on_error:
+            # The engine already chose not to raise for an LLM failure: record it.
+            if not continue_on_error and not isinstance(exc, _LLMFailureError):
                 raise
             error_payload = _chunk_error_payload(exc)
             chunk_metadata.append(
@@ -199,11 +213,15 @@ async def extract_rows_chunked(
             rows.append(row)
             added += 1
 
+        truncated = bool(chunk_result.metadata.get("truncated"))
+        truncated_chunks += truncated
         chunk_metadata.append(
             {
                 **chunk.to_dict(),
                 "previous_chunk_digest": previous_digest,
                 "status": "succeeded",
+                "truncated": truncated,
+                "checks": check_rows(chunk_rows, columns=columns),
                 "rows_returned": len(chunk_rows),
                 "rows_added": added,
                 "duplicates_removed": duplicates,
@@ -236,6 +254,7 @@ async def extract_rows_chunked(
                 "partial": failed_chunks > 0,
                 "rows_extracted": len(rows),
                 "duplicates_removed": total_duplicates,
+                "truncated_chunks": truncated_chunks,
                 "chunks": chunk_metadata,
             },
         },
@@ -315,5 +334,26 @@ def _digest_rows(rows: Sequence[Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _chunk_error_payload(exc: Exception) -> dict[str, str]:
+class _LLMFailureError(Exception):
+    """A structured LLM failure an engine returned instead of raising."""
+
+    def __init__(self, error: dict[str, Any]) -> None:
+        super().__init__(str(error.get("message", "")))
+        self.error = error
+
+
+def _chunk_error_payload(exc: Exception) -> dict[str, Any]:
+    if isinstance(exc, _LLMFailureError):
+        return {
+            "error_type": "LLMError",
+            "error": str(exc),
+            "stage": exc.error.get("stage", "llm"),
+            "model": exc.error.get("model"),
+        }
     return {"error_type": type(exc).__name__, "error": str(exc)}
+
+
+def _columns(row_schema: JsonSchema) -> list[str]:
+    items = row_schema.get("items") if row_schema.get("type") == "array" else row_schema
+    properties = items.get("properties") if isinstance(items, dict) else None
+    return list(properties) if isinstance(properties, dict) else []

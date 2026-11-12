@@ -23,6 +23,7 @@ from extractfold.engines.base import (
 
 _SUPPORTED_EXTENSIONS = {"txt", "md", "html", "json", "csv"}
 _METADATA_KEYS = ("usage", "cost", "route")
+_TRUNCATED = {"length", "max_tokens"}
 
 
 class ProviderRouterEngine(ExtractionEngine):
@@ -35,15 +36,25 @@ class ProviderRouterEngine(ExtractionEngine):
         provider_call: Callable[..., Any] | None = None,
         prompt_builder: Callable[..., str] | None = None,
         models: Sequence[Any] | None = None,
+        raise_on_error: bool = True,
     ) -> None:
         """*models* is an ordered fallback chain passed one by one as ``model=`` to
         *provider_call* (names, or dicts of call settings such as an API key). A model
-        that raises or answers without parseable JSON hands the call to the next one."""
+        that raises or answers without parseable JSON hands the call to the next one.
+
+        *provider_call* may return the payload itself (dict, list, JSON text), a chat
+        completion (``choices[0].message.content`` / ``finish_reason``) or a dict with
+        ``content`` and ``finish_reason``. An answer cut at the token limit is kept when
+        it still parses (``metadata["truncated"]``), otherwise the next model is tried.
+
+        With ``raise_on_error=False`` a failure of the last model returns an invalid
+        result with ``metadata["error"] = {"stage": "llm", "model", "message"}``."""
         self._provider = provider
         self._model = model
         self._models: list[Any] = list(models) if models else [model]
         self._provider_call = provider_call
         self._prompt_builder = prompt_builder
+        self._raise_on_error = raise_on_error
 
     @property
     def name(self) -> str:
@@ -97,14 +108,29 @@ class ProviderRouterEngine(ExtractionEngine):
                         **kwargs,
                     )
                 )
-                data = extract_data_payload(raw)
-            except Exception as exc:
-                if index == len(self._models) - 1:
+                content, finish_reason, usage = _unwrap(raw)
+                truncated = finish_reason in _TRUNCATED
+                try:
+                    data = extract_data_payload(content)
+                except ValueError as exc:
+                    if truncated:
+                        raise ValueError(f"answer truncated at the token limit: {exc}") from exc
                     raise
-                fallbacks.append({"model": _model_name(model), "error": str(exc)[:300]})
-                continue
+            except Exception as exc:
+                failure = {"model": _model_name(model), "error": str(exc)[:300]}
+                if index < len(self._models) - 1:
+                    fallbacks.append(failure)
+                    continue
+                if self._raise_on_error:
+                    raise
+                return self._failure(schema_obj, start, failure, fallbacks)
             metadata = self._metadata(raw)
             metadata["model"] = _model_name(model)
+            if finish_reason is not None:
+                metadata["finish_reason"] = finish_reason
+                metadata["truncated"] = truncated
+            if usage is not None and "usage" not in metadata:
+                metadata["usage"] = usage
             if fallbacks:
                 metadata["fallbacks"] = fallbacks
             return build_result(
@@ -116,6 +142,26 @@ class ProviderRouterEngine(ExtractionEngine):
                 metadata=metadata,
             )
         raise RuntimeError("provider_router has no model to call")
+
+    def _failure(
+        self,
+        schema: JsonSchema,
+        start: float,
+        failure: dict[str, Any],
+        fallbacks: list[dict[str, Any]],
+    ) -> ExtractionResult:
+        metadata: dict[str, Any] = {
+            "provider": self._provider,
+            "model": failure["model"],
+            "error": {"stage": "llm", "model": failure["model"], "message": failure["error"]},
+        }
+        if fallbacks:
+            metadata["fallbacks"] = fallbacks
+        result = build_result(
+            data={}, engine_name=self.name, schema=schema, start=start, raw=None, metadata=metadata
+        )
+        result.valid = False
+        return result
 
     def _prompt(self, text: str, schema: JsonSchema, **kwargs: Any) -> str:
         if self._prompt_builder is not None:
@@ -149,6 +195,20 @@ class ProviderRouterEngine(ExtractionEngine):
 def _model_name(model: Any) -> Any:
     """A model's name for metadata: never copy call settings (API keys) out of a dict."""
     return model.get("model") if isinstance(model, Mapping) else model
+
+
+def _unwrap(raw: Any) -> tuple[Any, str | None, Any]:
+    """(payload, finish_reason, usage) of a provider answer."""
+    choices = getattr(raw, "choices", None)
+    if choices:
+        choice = choices[0]
+        message = getattr(choice, "message", None)
+        return getattr(message, "content", None) or "", choice.finish_reason, getattr(
+            raw, "usage", None
+        )
+    if isinstance(raw, Mapping) and "finish_reason" in raw and "content" in raw:
+        return raw["content"], raw["finish_reason"], raw.get("usage")
+    return raw, None, None
 
 
 def _model_dump(value: Any) -> Any:

@@ -13,6 +13,7 @@ from extractfold.engines.base import (
     load_schema,
     validate_data,
 )
+from extractfold.quality import check_rows
 from extractfold.schema import SchemaConversionResult, infer_schema, template_to_schema
 from extractfold.text import extract_rows_chunked
 
@@ -31,6 +32,7 @@ __all__ = [
     "chunk_json_array",
     "chunk_rows",
     "chunk_sections",
+    "check_rows",
     "chunk_text",
     "extract_rows_chunked",
     "infer_schema",

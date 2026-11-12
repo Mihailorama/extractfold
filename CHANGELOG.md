@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `check_rows(rows, columns=, expected_rows=)`: row-count, schema-compliance and
+  suspicious-pattern checks as a uniform list of `{check, status, message}`.
+- `extract_rows_chunked` reports per chunk `checks` and `truncated`, plus
+  `chunking["truncated_chunks"]`.
+- `ProviderRouterEngine` reads chat-completion answers and `{"content", "finish_reason"}`
+  dicts; an answer cut at the token limit is kept when it parses
+  (`metadata["truncated"]`), otherwise the next model is tried.
+- `ProviderRouterEngine(raise_on_error=False)`: when the last model fails, an invalid
+  result with `metadata["error"] = {"stage": "llm", "model", "message"}`; chunked
+  extraction records it on the chunk and goes on.
+
 ## [0.2.0] - 2026-11-11
 
 ### Added

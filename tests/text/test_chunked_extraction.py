@@ -271,3 +271,57 @@ async def test_extract_rows_chunked_runs_chunks_concurrently_in_order() -> None:
     )
     assert peak == 3
     assert result.data["rows"] == [{"n": 1}, {"n": 2}, {"n": 3}]
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_reports_quality_checks_and_truncation_per_chunk() -> None:
+    from extractfold.engines.provider_router_engine import ProviderRouterEngine
+
+    def provider_call(**kwargs: Any) -> dict[str, Any]:
+        if kwargs["text"] == "one":
+            return {"content": '{"rows": [{"name": "a"}]}', "finish_reason": "length"}
+        return {"content": '{"rows": [{"name": "b"}, {"name": "c"}]}', "finish_reason": "stop"}
+
+    chunks = [
+        TextChunk(text="one", index=0, start=0, end=3, strategy="manual"),
+        TextChunk(text="two", index=1, start=3, end=6, strategy="manual"),
+    ]
+    result = await extract_rows_chunked(
+        "onetwo",
+        {"type": "object", "properties": {"name": {"type": "string"}}},
+        engine=ProviderRouterEngine(provider_call=provider_call),
+        chunks=chunks,
+    )
+
+    chunking = result.metadata["chunking"]
+    assert chunking["truncated_chunks"] == 1
+    assert [c["truncated"] for c in chunking["chunks"]] == [True, False]
+    checks = chunking["chunks"][1]["checks"]
+    assert [c["check"] for c in checks] == ["schema_compliance", "suspicious_patterns"]
+    assert all(c["status"] == "passed" for c in checks)
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_records_a_structured_llm_failure() -> None:
+    from extractfold.engines.provider_router_engine import ProviderRouterEngine
+
+    def provider_call(**kwargs: Any) -> Any:
+        if kwargs["text"] == "bad":
+            raise RuntimeError("quota exceeded")
+        return '[{"name": "ok"}]'
+
+    chunks = [
+        TextChunk(text="bad", index=0, start=0, end=3, strategy="manual"),
+        TextChunk(text="good", index=1, start=3, end=7, strategy="manual"),
+    ]
+    engine = ProviderRouterEngine(models=["m1"], provider_call=provider_call, raise_on_error=False)
+    result = await extract_rows_chunked("badgood", {"name": "x"}, engine=engine, chunks=chunks)
+
+    chunking = result.metadata["chunking"]
+    assert result.data["rows"] == [{"name": "ok"}]
+    assert result.valid is False
+    assert chunking["failed_chunks"] == 1 and chunking["partial"] is True
+    assert chunking["chunks"][0]["status"] == "failed"
+    failed = chunking["chunks"][0]
+    assert (failed["stage"], failed["model"], failed["error"]) == ("llm", "m1", "quota exceeded")
+    assert failed["error_type"] == "LLMError"

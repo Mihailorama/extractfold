@@ -8,8 +8,8 @@ created: "2026-11-10"
 # Feature: model fallback chain and production row extraction
 
 ## Problem
-A caller that extracts table rows from documents (first user: Datatera ai-utils, where
-each pipeline step picks its own model) needs:
+A caller that extracts table rows from documents (where each pipeline step picks its
+own model) needs:
 
 - a per-step model **fallback chain** across providers, so an outage, rate limit or an
   unparseable / truncated answer moves to the next model instead of failing the step;

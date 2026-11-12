@@ -151,3 +151,76 @@ async def test_provider_router_unparseable_answer_moves_to_the_next_model() -> N
     engine = ProviderRouterEngine(models=["a", "b"], provider_call=provider_call)
     result = await engine.extract_text("text", INVOICE_SCHEMA)
     assert result.data["invoice_id"] == "X" and result.metadata["model"] == "b"
+
+
+class _Choice:
+    def __init__(self, content: str, finish_reason: str) -> None:
+        self.message = type("Message", (), {"content": content})()
+        self.finish_reason = finish_reason
+
+
+class _ChatResponse:
+    def __init__(self, content: str, finish_reason: str = "stop") -> None:
+        self.choices = [_Choice(content, finish_reason)]
+        self.usage = {"prompt_tokens": 10, "completion_tokens": 5}
+
+
+@pytest.mark.asyncio
+async def test_provider_router_reads_chat_completion_responses() -> None:
+    engine = ProviderRouterEngine(
+        provider_call=lambda **kwargs: _ChatResponse('{"invoice_id": "A", "total": 1}')
+    )
+    result = await engine.extract_text("text", INVOICE_SCHEMA)
+
+    assert result.data == {"invoice_id": "A", "total": 1}
+    assert result.metadata["finish_reason"] == "stop"
+    assert result.metadata["truncated"] is False
+    assert result.metadata["usage"] == {"prompt_tokens": 10, "completion_tokens": 5}
+
+
+@pytest.mark.asyncio
+async def test_provider_router_flags_a_truncated_answer_that_still_parses() -> None:
+    def provider_call(**kwargs: Any) -> dict[str, Any]:
+        return {"content": '{"rows": [{"a": 1}]}', "finish_reason": "length"}
+
+    result = await ProviderRouterEngine(provider_call=provider_call).extract_text(
+        "text", {"type": "object"}
+    )
+
+    assert result.data == {"rows": [{"a": 1}]}
+    assert result.metadata["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_provider_router_truncated_unparseable_answer_moves_to_the_next_model() -> None:
+    def provider_call(**kwargs: Any) -> dict[str, Any]:
+        if kwargs["model"] == "short":
+            return {"content": '{"rows": [{"a": 1}, {"a"', "finish_reason": "length"}
+        return {"content": '{"rows": [{"a": 1}, {"a": 2}]}', "finish_reason": "stop"}
+
+    engine = ProviderRouterEngine(models=["short", "long"], provider_call=provider_call)
+    result = await engine.extract_text("text", {"type": "object"})
+
+    assert result.metadata["model"] == "long"
+    assert result.metadata["truncated"] is False
+    assert "truncated" in result.metadata["fallbacks"][0]["error"]
+
+
+@pytest.mark.asyncio
+async def test_provider_router_returns_a_structured_llm_failure_when_asked() -> None:
+    async def provider_call(**kwargs: Any) -> dict[str, Any]:
+        model = kwargs["model"]
+        raise RuntimeError(f"{model['model'] if isinstance(model, dict) else model} down")
+
+    engine = ProviderRouterEngine(
+        models=["a", {"model": "b", "api_key": "secret"}],
+        provider_call=provider_call,
+        raise_on_error=False,
+    )
+    result = await engine.extract_text("text", INVOICE_SCHEMA)
+
+    assert result.valid is False
+    assert result.data == {}
+    assert result.metadata["error"] == {"stage": "llm", "model": "b", "message": "b down"}
+    assert result.metadata["fallbacks"] == [{"model": "a", "error": "a down"}]
+    assert "secret" not in repr(result.metadata)
