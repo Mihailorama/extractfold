@@ -22,6 +22,7 @@ from extractfold.engines.base import (
     validate_data,
 )
 from extractfold.prescan import PreScan
+from extractfold.provenance import catalog_for_span, field_confidence
 from extractfold.quality import check_rows
 from extractfold.schema import SchemaConversionResult, template_to_schema
 
@@ -119,6 +120,7 @@ async def extract_rows_chunked(
     rerun_engine: ExtractionEngine | None = None,
     input_format: str | None = None,
     max_rows: int | None = None,
+    source_catalog: Sequence[Mapping[str, Any]] | None = None,
     **kwargs: Any,
 ) -> ExtractionResult:
     """Extract structured rows from prepared text with chunked orchestration.
@@ -139,6 +141,10 @@ async def extract_rows_chunked(
     and *max_rows* (see :func:`extractfold.chunking.chunk_budget`). A JSON array of objects
     whose keys are all schema fields is returned as is, without a model call
     (``metadata["passthrough"]``).
+
+    With *source_catalog* (:func:`extractfold.provenance.build_source_catalog` of *text*)
+    each chunk call gets the entries inside that chunk as ``source_catalog=``; the result's
+    ``provenance["rows"]`` stays aligned with ``data["rows"]``.
     """
     start = time.perf_counter()
     conversion = _load_or_convert_row_schema(schema)
@@ -169,6 +175,7 @@ async def extract_rows_chunked(
     planned_chunks = _resolve_chunks(text, chunks=chunks, max_chars=max_chars, overlap=overlap)
 
     rows: list[Any] = []
+    provenance_rows: list[Any] = []
     seen: set[str] = set()
     raw_results: list[Any] = []
     chunk_metadata: list[dict[str, Any]] = []
@@ -193,7 +200,9 @@ async def extract_rows_chunked(
         context = "\n\n".join(
             part for part in (prescan_context, chunk.metadata.get("context")) if part
         )
-        extra = {"context": context} if context else {}
+        extra: dict[str, Any] = {"context": context} if context else {}
+        if source_catalog is not None:
+            extra["source_catalog"] = catalog_for_span(source_catalog, chunk.start, chunk.end)
         return await extract_rows(
             chunk.text,
             row_schema,
@@ -275,13 +284,19 @@ async def extract_rows_chunked(
 
         added = 0
         duplicates = 0
-        for row in chunk_rows:
+        chunk_provenance = chunk_result.provenance.get("rows")
+        if not isinstance(chunk_provenance, list):
+            chunk_provenance = []
+        for position, row in enumerate(chunk_rows):
             row_key = _row_key(row)
             if dedupe and row_key in seen:
                 duplicates += 1
                 continue
             seen.add(row_key)
             rows.append(row)
+            provenance_rows.append(
+                chunk_provenance[position] if position < len(chunk_provenance) else {}
+            )
             added += 1
 
         truncated = bool(chunk_result.metadata.get("truncated"))
@@ -321,10 +336,13 @@ async def extract_rows_chunked(
                 "status": check["status"],
                 "message": check["message"],
             }
+    provenance = {"rows": provenance_rows} if any(provenance_rows) else {}
     return ExtractionResult(
         data=data,
         engine_name=engine.name,
         schema=result_schema,
+        provenance=provenance,
+        field_confidence=field_confidence(provenance_rows) if provenance else {},
         valid=validation.valid and failed_chunks == 0,
         raw=raw_results,
         metadata={

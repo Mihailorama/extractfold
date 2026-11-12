@@ -20,6 +20,8 @@ from extractfold.engines.base import (
     JsonSchema,
     load_schema,
 )
+from extractfold.parsing import parse_json_payload
+from extractfold.provenance import align_provenance, catalog_prompt, field_confidence
 
 _SUPPORTED_EXTENSIONS = {"txt", "md", "html", "json", "csv"}
 _METADATA_KEYS = ("usage", "cost", "route")
@@ -67,8 +69,8 @@ class ProviderRouterEngine(ExtractionEngine):
     @property
     def capabilities(self) -> ExtractionCapabilities:
         return ExtractionCapabilities(
-            field_confidence=False,
-            provenance=False,
+            field_confidence=True,
+            provenance=True,
             nested_schemas=True,
             batch=True,
             local=False,
@@ -94,6 +96,9 @@ class ProviderRouterEngine(ExtractionEngine):
 
         schema_obj = load_schema(schema)
         prompt = self._prompt(text, schema_obj, **kwargs)
+        catalog = kwargs.get("source_catalog")
+        if catalog:
+            prompt = f"{prompt}\n\n{catalog_prompt(catalog)}"
         start = time.perf_counter()
         fallbacks: list[dict[str, Any]] = []
         for index, model in enumerate(self._models):
@@ -124,6 +129,7 @@ class ProviderRouterEngine(ExtractionEngine):
                 if self._raise_on_error:
                     raise
                 return self._failure(schema_obj, start, failure, fallbacks)
+            provenance, confidence = _provenance(content, data, catalog) if catalog else ({}, {})
             metadata = self._metadata(raw)
             metadata["model"] = _model_name(model)
             if finish_reason is not None:
@@ -140,6 +146,8 @@ class ProviderRouterEngine(ExtractionEngine):
                 start=start,
                 raw=raw,
                 metadata=metadata,
+                provenance=provenance,
+                field_confidence=confidence,
             )
         raise RuntimeError("provider_router has no model to call")
 
@@ -197,6 +205,20 @@ class ProviderRouterEngine(ExtractionEngine):
 def _model_name(model: Any) -> Any:
     """A model's name for metadata: never copy call settings (API keys) out of a dict."""
     return model.get("model") if isinstance(model, Mapping) else model
+
+
+def _provenance(
+    content: Any, data: dict[str, Any], catalog: Sequence[Mapping[str, Any]]
+) -> tuple[dict[str, Any], dict[str, float]]:
+    """Per-field provenance of an answer: ``{"rows": [...]}`` for rows, else field map."""
+    parsed = parse_json_payload(content) if isinstance(content, str) else _model_dump(content)
+    cited = parsed.get("provenance") if isinstance(parsed, dict) else None
+    rows = data.get("rows")
+    if isinstance(rows, list):
+        aligned = align_provenance(rows, cited, catalog)
+        return {"rows": aligned}, field_confidence(aligned)
+    aligned = align_provenance([data], cited if isinstance(cited, list) else [cited], catalog)
+    return aligned[0], field_confidence(aligned)
 
 
 def _unwrap(raw: Any) -> tuple[Any, str | None, Any]:
