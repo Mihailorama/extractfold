@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Per-field provenance and confidence in `ProviderRouterEngine`:
+  `build_source_catalog(text, input_format=, blocks=)` lists citable cells (sheet, CSV),
+  layout blocks with page and bbox (docfold `bounding_boxes`), HTML blocks with page, JSON
+  values or paragraphs. Passing `source_catalog=` adds the catalog and citation rules to
+  the prompt; `result.provenance` holds per field `source_refs` (locations), `confidence`
+  and `rationale`, re-scored against the cited text by `align_provenance`;
+  `field_confidence` is the mean per field.
+- `extract_rows_chunked(source_catalog=)` gives each chunk only its own entries and keeps
+  `provenance["rows"]` aligned with `data["rows"]`.
+
+### Changed
+- `ProviderRouterEngine.capabilities` now declares `provenance` and `field_confidence`.
 - `chunk_document(text, input_format=, max_chars=, max_rows=)`: format-aware chunks
   that never cut a row, line or page: spreadsheet text (`Sheet: <name>` sections, per-sheet
   row ranges, carried-over sheet and section-header `context`), CSV (quote-aware, header

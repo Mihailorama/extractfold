@@ -22,6 +22,7 @@ from extractfold.engines.base import (
     validate_data,
 )
 from extractfold.prescan import PreScan, prescan
+from extractfold.provenance import align_provenance, build_source_catalog
 from extractfold.quality import check_rows
 from extractfold.schema import SchemaConversionResult, infer_schema, template_to_schema
 from extractfold.text import extract_rows_chunked
@@ -39,6 +40,8 @@ __all__ = [
     "SchemaValidationResult",
     "TextChunk",
     "__version__",
+    "align_provenance",
+    "build_source_catalog",
     "chunk_json_array",
     "chunk_rows",
     "chunk_sections",
