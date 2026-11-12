@@ -22,8 +22,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   refuses without one (#14).
 - `canonical_extract(text, llm=)`: header fields, sections, line items and quality
   metrics (#15).
+- `extract_rows_chunked(expected_rows=)`: an int (document row count) or a callable
+  `chunk -> int | None` overrides format estimates and the pre-scan count, so header
+  schemas over tables are not re-run (#31).
 
 ### Fixed
+- `prescan()` keeps the complete part of an answer cut at the token limit
+  (`PreScan.repaired`) and asks for at most 20 control values (#32).
 - `llm_structured` (Anthropic) no longer sends `temperature` unless the caller passes it
   (current Claude models reject it) and reads only text blocks of the answer.
 - CI type-checks with the `llm_structured` and `lift` extras installed.
