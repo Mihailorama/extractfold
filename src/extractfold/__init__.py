@@ -28,7 +28,7 @@ from extractfold.quality import check_rows
 from extractfold.schema import SchemaConversionResult, infer_schema, template_to_schema
 from extractfold.text import extract_rows_chunked
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "BatchExtractionResult",
