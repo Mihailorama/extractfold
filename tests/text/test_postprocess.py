@@ -95,3 +95,26 @@ async def test_map_to_reference_exact_similar_model_and_other() -> None:
 
     assert [r["w"] for r in out] == ["Concrete works", "Painting", "Concrete works", "Other", ""]
     assert [c["method"] for c in record["changes"]] == ["exact", "similar", "llm", "other"]
+
+
+@pytest.mark.asyncio
+async def test_model_call_errors_are_not_mistaken_for_empty_answers() -> None:
+    from extractfold.codegen import extract_tables_with_code
+    from extractfold.entities import extract_entities
+    from extractfold.rules import suggest_rules
+
+    def down(prompt: str) -> str:
+        raise RuntimeError("429 rate limit")
+
+    rows = [{"a": "1"}, {"a": "1"}]
+    for call in (
+        merge_rows(rows, llm=down),
+        compute_fields(rows, [{"name": "b"}], llm=down),
+        map_to_reference(rows, "a", ["x"], llm=down),
+        suggest_rules(rows, llm=down),
+        extract_entities("text", llm=down),
+        extract_tables_with_code({"t": [["a"]]}, {"type": "object"}, llm=down,
+                                 sandbox=lambda *a, **k: {}),
+    ):
+        with pytest.raises(RuntimeError, match="429"):
+            await call

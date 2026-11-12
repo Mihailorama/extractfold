@@ -318,8 +318,9 @@ async def suggest_rules(
         + (f"\nContext:\n{instructions}\n" if instructions else "")
         + f"\nTables (sample rows):\n{json.dumps(samples, ensure_ascii=False, default=str)}"
     )
+    answer = str(await maybe_await(llm(prompt)))  # call errors propagate
     try:
-        proposed, _ = parse_llm_json(str(await maybe_await(llm(prompt))))
+        proposed, _ = parse_llm_json(answer)
     except Exception:
         return []
     if isinstance(proposed, dict):
