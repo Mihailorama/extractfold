@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `llm_structured` (Anthropic) no longer sends `temperature` unless the caller passes it
+  (current Claude models reject it) and reads only text blocks of the answer.
+- CI type-checks with the `llm_structured` and `lift` extras installed.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added

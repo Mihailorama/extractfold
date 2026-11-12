@@ -95,7 +95,7 @@ class LiftEngine(ExtractionEngine):
             raise RuntimeError("LIFT_API_KEY or DATALAB_API_KEY is required")
         with open(file_path, "rb") as file_obj:
             response = requests.post(
-                self._endpoint,
+                str(self._endpoint),
                 headers={"Authorization": f"Bearer {self._api_key}"},
                 files={"file": file_obj},
                 data={"schema": schema},

@@ -125,13 +125,19 @@ class LLMStructuredEngine(ExtractionEngine):
         import anthropic
 
         client = anthropic.Anthropic()
+        # Current Claude models reject `temperature`: send it only when the caller asks.
+        options: dict[str, Any] = {}
+        if "temperature" in kwargs:
+            options["temperature"] = kwargs["temperature"]
         response = client.messages.create(
             model=self._model,
             max_tokens=kwargs.get("max_tokens", 4096),
-            temperature=kwargs.get("temperature", 0),
             messages=[{"role": "user", "content": prompt}],
+            **options,
         )
-        text = "".join(getattr(block, "text", "") for block in response.content)
+        text = "".join(
+            block.text for block in response.content if getattr(block, "type", "") == "text"
+        )
         return extract_json_object(text)
 
     def _call_openai(self, prompt: str, schema: dict[str, Any], **kwargs: Any) -> Any:
@@ -166,7 +172,7 @@ class LLMStructuredEngine(ExtractionEngine):
                 "temperature": kwargs.get("temperature", 0),
             },
         )
-        return extract_json_object(response.text)
+        return extract_json_object(response.text or "")
 
     @staticmethod
     def _default_model(provider: str) -> str:
