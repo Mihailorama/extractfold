@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "extractfold"
-version = "0.4.0"
+version = "0.5.0"
 description = "Schema-guided structured data extraction from documents."
 readme = "README.md"
 license = "MIT"

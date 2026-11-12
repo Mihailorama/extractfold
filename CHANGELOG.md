@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-12
+
 ### Changed (breaking)
 - `LLMStructuredEngine` requires `model=` (keyword-only): the `claude-fable-5`,
   `gpt-4.1` and `gemini-2.5-pro` defaults and the `ANTHROPIC_MODEL` / `OPENAI_MODEL` /
