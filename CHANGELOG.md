@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `prescan(text, llm=)`: one call over the document's head and tail returns a `PreScan`
+  (columns, types, structure, control values, `expected_rows`, prompt `context()`).
+- `extract_rows_chunked(prescan=, rerun_below=, rerun_engine=)`: the pre-scan context
+  reaches every chunk call as `context=`; chunks returning fewer rows than expected are
+  re-run and the longer answer kept. Per chunk `expected_rows` / `rerun`, in the summary
+  `rerun_chunks`, and `metadata["row_count"]` / `metadata["prescan"]`.
+- `ProviderRouterEngine`'s default prompt includes a `context=` argument.
 - `check_rows(rows, columns=, expected_rows=)`: row-count, schema-compliance and
   suspicious-pattern checks as a uniform list of `{check, status, message}`.
 - `extract_rows_chunked` reports per chunk `checks` and `truncated`, plus
