@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (breaking)
+- `LLMStructuredEngine` requires `model=` (keyword-only): the `claude-fable-5`,
+  `gpt-4.1` and `gemini-2.5-pro` defaults and the `ANTHROPIC_MODEL` / `OPENAI_MODEL` /
+  `GEMINI_MODEL` fallbacks are gone. Positional `LLMStructuredEngine(provider, model)`
+  calls must pass `model=`.
+- `InstructorEngine` and `FenicEngine` have no default model either (`gpt-4.1`,
+  `gpt-4o-mini`, `claude-haiku-4-5`, `gemini-2.5-flash`, `INSTRUCTOR_MODEL` removed):
+  without `model=` they report unavailable and raise on a real call.
+- `DocfoldLLMEngine` no longer builds its own LLM engine: pass
+  `llm_engine=LLMStructuredEngine(model=...)`.
+- CLI: `llm_structured` and `docfold_llm` are registered only with
+  `--llm-model` (and optional `--llm-provider`).
+
 ## [0.4.0] - 2026-11-12
 
 ### Added

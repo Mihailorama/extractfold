@@ -36,7 +36,7 @@ schema = {
 }
 
 async def main() -> None:
-    result = await LLMStructuredEngine().extract("invoice.pdf", schema)
+    result = await LLMStructuredEngine(model="claude-haiku-5-5").extract("invoice.pdf", schema)
     print(result.data)
 
 asyncio.run(main())
@@ -110,11 +110,11 @@ result = await ProviderRouterEngine(provider_call=provider_call).extract("invoic
 engine = ProviderRouterEngine(provider_call=provider_call, models=["claude-haiku-5-5", "gemini-3.8-flash"])
 result = await LiftEngine().extract("invoice.pdf", "invoice")
 result = await NuExtractEngine(backend="hf").extract("invoice.txt", "invoice")
-result = await LLMStructuredEngine(provider="anthropic").extract("invoice.pdf", "invoice")
-result = await LLMStructuredEngine(provider="openai").extract("invoice.pdf", "invoice")
-result = await LLMStructuredEngine(provider="gemini").extract("invoice.pdf", "invoice")
-result = await InstructorEngine().extract("invoice.pdf", "invoice")
-result = await FenicEngine().extract("invoice.txt", "invoice")
+# LLM engines have no default model: always name it.
+result = await LLMStructuredEngine("anthropic", model="claude-haiku-5-5").extract("invoice.pdf", "invoice")
+result = await LLMStructuredEngine("gemini", model="gemini-3.8-flash").extract("invoice.pdf", "invoice")
+result = await InstructorEngine(model="<openai model id>").extract("invoice.pdf", "invoice")
+result = await FenicEngine(model="claude-haiku-5-5").extract("invoice.txt", "invoice")
 result = await LlamaExtractEngine().extract("invoice.pdf", "invoice")
 result = await AzureDocIntEngine().extract("invoice.pdf", "invoice")
 result = await GoogleDocAIEngine().extract("invoice.pdf", "invoice")

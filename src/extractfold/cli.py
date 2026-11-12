@@ -17,6 +17,12 @@ def main(argv: list[str] | None = None) -> None:
         prog="extractfold",
         description="Extract schema-conformant dictionaries from documents.",
     )
+    parser.add_argument(
+        "--llm-model",
+        help="model for llm_structured and docfold_llm (they are off without it)",
+    )
+    parser.add_argument("--llm-provider", default="anthropic",
+                        choices=["anthropic", "openai", "gemini"])
     sub = parser.add_subparsers(dest="command")
 
     extract_p = sub.add_parser("extract", help="Extract structured data from a document")
@@ -47,12 +53,14 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "compare":
         asyncio.run(_cmd_compare(args))
     elif args.command == "list-engines":
-        _cmd_list_engines()
+        _cmd_list_engines(args)
     elif args.command == "benchmark":
         _run_benchmark_cli(args)
 
 
-def _build_router() -> ExtractionRouter:
+def _build_router(
+    llm_model: str | None = None, llm_provider: str = "anthropic"
+) -> ExtractionRouter:
     from extractfold.engines.azure_docint_engine import AzureDocIntEngine
     from extractfold.engines.docfold_llm_engine import DocfoldLLMEngine
     from extractfold.engines.fenic_engine import FenicEngine
@@ -65,25 +73,28 @@ def _build_router() -> ExtractionRouter:
     from extractfold.engines.provider_router_engine import ProviderRouterEngine
     from extractfold.engines.textract_engine import TextractEngine
 
+    llm_engines: list[Any] = []
+    if llm_model:
+        llm = LLMStructuredEngine(llm_provider, model=llm_model)
+        llm_engines = [llm, DocfoldLLMEngine(llm_engine=llm)]
     return ExtractionRouter(
         [
             LiftEngine(),
             NuExtractEngine(),
             ProviderRouterEngine(),
-            LLMStructuredEngine(),
+            *llm_engines,
             InstructorEngine(),
             FenicEngine(),
             LlamaExtractEngine(),
             AzureDocIntEngine(),
             GoogleDocAIEngine(),
             TextractEngine(),
-            DocfoldLLMEngine(),
         ]
     )
 
 
 async def _cmd_extract(args: argparse.Namespace) -> None:
-    router = _build_router()
+    router = _build_router(args.llm_model, args.llm_provider)
     schema = load_schema(args.schema)
     result = await router.extract(args.file, schema, engine_hint=args.engine)
     payload = json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
@@ -94,7 +105,7 @@ async def _cmd_extract(args: argparse.Namespace) -> None:
 
 
 async def _cmd_compare(args: argparse.Namespace) -> None:
-    router = _build_router()
+    router = _build_router(args.llm_model, args.llm_provider)
     schema = load_schema(args.schema)
     engines = args.engines.split(",") if args.engines else None
     results = await router.compare(args.file, schema, engines=engines)
@@ -109,8 +120,8 @@ async def _cmd_compare(args: argparse.Namespace) -> None:
         print(f"{field}: {values}")
 
 
-def _cmd_list_engines() -> None:
-    engines = _build_router().list_engines()
+def _cmd_list_engines(args: argparse.Namespace) -> None:
+    engines = _build_router(args.llm_model, args.llm_provider).list_engines()
     print(
         f"{'Engine':<16} {'Avail':<6} {'Conf':<4} {'Prov':<4} "
         f"{'Nest':<4} {'Local':<5} {'Remote':<6} Extensions"
@@ -134,7 +145,7 @@ def _run_benchmark_cli(args: argparse.Namespace) -> None:
         benchmark.run_benchmark(
             args.dataset,
             engines=engines,
-            router=_build_router(),
+            router=_build_router(args.llm_model, args.llm_provider),
             output_path=args.out,
         )
     )

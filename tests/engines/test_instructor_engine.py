@@ -39,3 +39,10 @@ def test_instructor_capabilities_are_remote_by_default() -> None:
 @pytest.mark.asyncio
 async def test_instructor_real_integration() -> None:
     await InstructorEngine().extract("tests/fixtures/invoice.pdf", "invoice")
+
+
+def test_instructor_and_fenic_have_no_default_model() -> None:
+    from extractfold.engines.fenic_engine import FenicEngine
+
+    assert InstructorEngine().is_available() is False
+    assert FenicEngine().is_available() is False

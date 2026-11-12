@@ -21,7 +21,6 @@ from extractfold.engines.base import (
     load_schema,
 )
 
-DEFAULT_ANTHROPIC_MODEL = "claude-fable-5"
 _SUPPORTED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "tiff", "tif", "docx", "txt", "md", "html"}
 
 
@@ -36,11 +35,16 @@ class LLMStructuredEngine(ExtractionEngine):
     def __init__(
         self,
         provider: str = "anthropic",
-        model: str | None = None,
+        *,
+        model: str,
         provider_call: Any | None = None,
     ) -> None:
+        """*model* is required: the engine has no default model, so every call names the
+        model it runs on."""
+        if not model:
+            raise ValueError("llm_structured needs model=, e.g. model='claude-haiku-5-5'")
         self._provider = provider
-        self._model = model or self._default_model(provider)
+        self._model = model
         self._provider_call = provider_call
 
     @property
@@ -173,16 +177,6 @@ class LLMStructuredEngine(ExtractionEngine):
             },
         )
         return extract_json_object(response.text or "")
-
-    @staticmethod
-    def _default_model(provider: str) -> str:
-        if provider == "anthropic":
-            return os.getenv("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL)
-        if provider == "openai":
-            return os.getenv("OPENAI_MODEL", "gpt-4.1")
-        if provider == "gemini":
-            return os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
-        return "unknown"
 
     @staticmethod
     def _prompt(text: str, schema: dict[str, Any]) -> str:

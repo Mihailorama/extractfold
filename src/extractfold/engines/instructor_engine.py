@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any
 
@@ -32,7 +31,7 @@ class InstructorEngine(ExtractionEngine):
         extractor: Any | None = None,
     ) -> None:
         self._provider = provider
-        self._model = model or os.getenv("INSTRUCTOR_MODEL", "gpt-4.1")
+        self._model = model  # no default model: a real call needs model=
         self._extractor = extractor
 
     @property
@@ -50,6 +49,8 @@ class InstructorEngine(ExtractionEngine):
     def is_available(self) -> bool:
         if self._extractor is not None:
             return True
+        if not self._model:
+            return False
         try:
             import instructor  # noqa: F401
         except ImportError:
@@ -80,6 +81,8 @@ class InstructorEngine(ExtractionEngine):
         import instructor
         from openai import OpenAI
 
+        if not self._model:
+            raise ValueError("instructor engine needs model=; it has no default model")
         client = instructor.from_openai(OpenAI())
         return client.chat.completions.create(
             model=self._model,
