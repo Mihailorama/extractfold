@@ -19,6 +19,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CLI: `llm_structured` and `docfold_llm` are registered only with
   `--llm-model` (and optional `--llm-provider`).
 
+### Fixed
+- Post-processing, rules, entities and code-generation helpers now let errors of the
+  injected `llm` call (rate limits, outages) propagate instead of treating them as an
+  empty answer; unparseable answers still fall back as before.
+
 ## [0.4.0] - 2026-11-12
 
 ### Added

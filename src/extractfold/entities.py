@@ -37,8 +37,9 @@ async def extract_entities(
             + (f"Instructions:\n{instructions}\n\n" if instructions else "")
             + f"Text:\n{chunk.text}"
         )
+        answer = str(await maybe_await(llm(prompt)))  # call errors propagate
         try:
-            data, _ = parse_llm_json(str(await maybe_await(llm(prompt))))
+            data, _ = parse_llm_json(answer)
         except Exception:
             continue
         if isinstance(data, dict):

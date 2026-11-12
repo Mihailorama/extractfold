@@ -106,8 +106,9 @@ async def _merge_with_llm(
         + (f"Instructions:\n{instructions}\n\n" if instructions else "")
         + f"Rows:\n{json.dumps(part, ensure_ascii=False, default=str)}"
     )
+    answer = str(await maybe_await(llm(prompt)))  # call errors propagate
     try:
-        data, _ = parse_llm_json(str(await maybe_await(llm(prompt))))
+        data, _ = parse_llm_json(answer)
     except Exception:
         return None
     if isinstance(data, list) and len(data) == 1:
@@ -178,8 +179,9 @@ async def _compute_with_llm(
         + f"\n\nRow:\n{json.dumps(row, ensure_ascii=False, default=str)}"
     )
     names = [spec["name"] for spec in specs]
+    answer = str(await maybe_await(llm(prompt)))  # call errors propagate
     try:
-        data, _ = parse_llm_json(str(await maybe_await(llm(prompt))))
+        data, _ = parse_llm_json(answer)
     except Exception:
         data = {}
     if not isinstance(data, dict):
@@ -253,8 +255,9 @@ async def _map_with_llm(
         f"Reference list:\n{json.dumps(canon, ensure_ascii=False)}\n\n"
         f"Values:\n{json.dumps(values, ensure_ascii=False)}"
     )
+    answer = str(await maybe_await(llm(prompt)))  # call errors propagate
     try:
-        data, _ = parse_llm_json(str(await maybe_await(llm(prompt))))
+        data, _ = parse_llm_json(answer)
     except Exception:
         return {}
     allowed = set(canon)
