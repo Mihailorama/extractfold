@@ -21,6 +21,7 @@ from extractfold.engines.base import (
     load_schema,
     validate_data,
 )
+from extractfold.parsing import parse_llm_json
 from extractfold.prescan import PreScan, prescan
 from extractfold.provenance import align_provenance, build_source_catalog
 from extractfold.quality import check_rows
@@ -52,6 +53,7 @@ __all__ = [
     "extract_rows_chunked",
     "infer_schema",
     "load_schema",
+    "parse_llm_json",
     "prescan",
     "template_to_schema",
     "validate_data",

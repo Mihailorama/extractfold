@@ -82,3 +82,46 @@ def test_common_extract_data_payload_uses_new_array_parser() -> None:
     assert extract_data_payload('```json\n[{"name": "Ada"}]\n```') == {
         "rows": [{"name": "Ada"}]
     }
+
+
+def test_parse_llm_json_clean_answers_are_not_repaired() -> None:
+    from extractfold.parsing import parse_llm_json
+
+    assert parse_llm_json('{"rows": [1]}') == ({"rows": [1]}, False)
+    assert parse_llm_json('Sure:\n```json\n[{"a": 1}]\n```') == ([{"a": 1}], False)
+    assert parse_llm_json('Result: {"a": 1} done') == ({"a": 1}, False)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ('{"rows": [{"a": 1}, {"a": 2}, {"a"', {"rows": [{"a": 1}, {"a": 2}]}),
+        ('{"rows": [{"a": 1, "b": "x"}, {"a": 2, "b": "unfinish', {"rows": [{"a": 1, "b": "x"}]}),
+        ('[{"a": "q\\"uote"}, {"a": 3', [{"a": 'q"uote'}]),
+        ('{"rows": [{"a": "}"}, {"a": [1, 2', {"rows": [{"a": "}"}]}),
+        (
+            '{"rows": [], "provenance": [{"a": {"c": 0.5}}, ',
+            {"rows": [], "provenance": [{"a": {"c": 0.5}}]},
+        ),
+    ],
+)
+def test_parse_llm_json_closes_truncated_answers(text: str, expected: object) -> None:
+    from extractfold.parsing import _close_truncated, parse_llm_json
+
+    assert parse_llm_json(text) == (expected, True)
+    assert _close_truncated(text) == expected
+
+
+def test_parse_llm_json_raises_on_text_without_json() -> None:
+    from extractfold.parsing import parse_llm_json
+
+    with pytest.raises(ValueError):
+        parse_llm_json("no json at all")
+
+
+def test_parse_llm_json_uses_json_repair_for_other_damage() -> None:
+    from extractfold.parsing import parse_llm_json
+
+    json_repair = pytest.importorskip("json_repair")
+    assert json_repair is not None
+    assert parse_llm_json("{a: 1, 'b': 2,}") == ({"a": 1, "b": 2}, True)
