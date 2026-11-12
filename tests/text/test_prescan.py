@@ -159,3 +159,29 @@ async def test_prescan_keeps_the_complete_part_of_a_truncated_answer() -> None:
     assert len(result.control_values) == 1  # the half-written second value is dropped
     assert result.to_dict()["repaired"] is True
     assert (await prescan("text", llm=lambda p: json.dumps(_ANSWER))).repaired is False
+async def test_expected_rows_overrides_format_estimates() -> None:
+    chunks = [
+        TextChunk(text="a", index=0, start=0, end=1, strategy="m",
+                  metadata={"estimated_rows": 40}),
+        TextChunk(text="b", index=1, start=1, end=2, strategy="m",
+                  metadata={"estimated_rows": 40}),
+    ]
+    header = _CountingEngine("e", {"a": [_rows(1)], "b": [_rows(1)]})
+
+    result = await extract_rows_chunked(
+        "ab", {"name": "x"}, engine=header, chunks=chunks, dedupe=False,
+        rerun_below=0.8, expected_rows=lambda chunk: None,
+    )
+
+    assert len(header.calls) == 2  # no re-run for a one-row-per-document schema
+    assert result.metadata["chunking"]["rerun_chunks"] == 0
+    assert [c["expected_rows"] for c in result.metadata["chunking"]["chunks"]] == [None, None]
+
+    total = _CountingEngine("e", {"a": [_rows(1)], "b": [_rows(1)]})
+    result = await extract_rows_chunked(
+        "ab", {"name": "x"}, engine=total, chunks=chunks, dedupe=False,
+        rerun_below=0.8, expected_rows=2,
+    )
+    assert len(total.calls) == 2
+    assert result.metadata["row_count"]["expected"] == 2
+    assert result.metadata["row_count"]["status"] == "passed"

@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -118,6 +118,7 @@ async def extract_rows_chunked(
     prescan: PreScan | None = None,
     rerun_below: float | None = None,
     rerun_engine: ExtractionEngine | None = None,
+    expected_rows: int | Callable[[TextChunk], int | None] | None = None,
     input_format: str | None = None,
     max_rows: int | None = None,
     source_catalog: Sequence[Mapping[str, Any]] | None = None,
@@ -135,6 +136,12 @@ async def extract_rows_chunked(
     chunk call as ``context=``. With *rerun_below* (e.g. ``0.8``) a chunk returning fewer
     than that share of its expected rows is extracted again with *rerun_engine* (default
     *engine*) and the longer answer is kept.
+
+    *expected_rows* overrides both sources when the format's row estimate does not count
+    what the schema extracts (a one-row-per-document header schema over a table): an int
+    is the document's row count (checked overall, and per chunk only when there is one
+    chunk); a callable ``chunk -> int | None`` gives each chunk's count (``None``: no
+    check, no re-run).
 
     With *input_format* (``spreadsheet``, ``csv``, ``json``, ``html``, ``markdown``, ...)
     chunks are planned by :func:`extractfold.chunking.chunk_document` within *max_chars*
@@ -188,7 +195,14 @@ async def extract_rows_chunked(
     previous_digest: str | None = None
     prescan_context = prescan.context() if prescan else ""
 
+    document_rows = expected_rows if isinstance(expected_rows, int) else (
+        prescan.expected_rows if prescan else None)
+
     def _expected(chunk: TextChunk) -> int | None:
+        if callable(expected_rows):
+            return expected_rows(chunk)
+        if isinstance(expected_rows, int):
+            return expected_rows if len(planned_chunks) == 1 else None
         estimate = chunk.metadata.get("estimated_rows")
         if isinstance(estimate, int):
             return estimate
@@ -328,14 +342,14 @@ async def extract_rows_chunked(
     control: dict[str, Any] = {}
     if prescan is not None:
         control["prescan"] = prescan.to_dict()
-        if prescan.expected_rows is not None:
-            check = check_rows(rows, expected_rows=prescan.expected_rows)[0]
-            control["row_count"] = {
-                "expected": prescan.expected_rows,
-                "extracted": len(rows),
-                "status": check["status"],
-                "message": check["message"],
-            }
+    if document_rows is not None:
+        check = check_rows(rows, expected_rows=document_rows)[0]
+        control["row_count"] = {
+            "expected": document_rows,
+            "extracted": len(rows),
+            "status": check["status"],
+            "message": check["message"],
+        }
     provenance = {"rows": provenance_rows} if any(provenance_rows) else {}
     return ExtractionResult(
         data=data,
