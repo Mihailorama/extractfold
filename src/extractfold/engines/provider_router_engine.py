@@ -20,7 +20,7 @@ from extractfold.engines.base import (
     JsonSchema,
     load_schema,
 )
-from extractfold.parsing import parse_json_payload
+from extractfold.parsing import parse_json_payload, parse_llm_json
 from extractfold.provenance import align_provenance, catalog_prompt, field_confidence
 
 _SUPPORTED_EXTENSIONS = {"txt", "md", "html", "json", "csv"}
@@ -39,6 +39,7 @@ class ProviderRouterEngine(ExtractionEngine):
         prompt_builder: Callable[..., str] | None = None,
         models: Sequence[Any] | None = None,
         raise_on_error: bool = True,
+        repair_json: bool = False,
     ) -> None:
         """*models* is an ordered fallback chain passed one by one as ``model=`` to
         *provider_call* (names, or dicts of call settings such as an API key). A model
@@ -50,13 +51,18 @@ class ProviderRouterEngine(ExtractionEngine):
         it still parses (``metadata["truncated"]``), otherwise the next model is tried.
 
         With ``raise_on_error=False`` a failure of the last model returns an invalid
-        result with ``metadata["error"] = {"stage": "llm", "model", "message"}``."""
+        result with ``metadata["error"] = {"stage": "llm", "model", "message"}``.
+
+        With ``repair_json=True`` an answer that does not parse (cut at the token limit,
+        a missing bracket) is repaired by :func:`extractfold.parsing.parse_llm_json`
+        instead of moving to the next model; ``metadata["repaired"]`` says so."""
         self._provider = provider
         self._model = model
         self._models: list[Any] = list(models) if models else [model]
         self._provider_call = provider_call
         self._prompt_builder = prompt_builder
         self._raise_on_error = raise_on_error
+        self._repair_json = repair_json
 
     @property
     def name(self) -> str:
@@ -115,12 +121,17 @@ class ProviderRouterEngine(ExtractionEngine):
                 )
                 content, finish_reason, usage = _unwrap(raw)
                 truncated = finish_reason in _TRUNCATED
+                repaired = False
                 try:
                     data = extract_data_payload(content)
                 except ValueError as exc:
-                    if truncated:
+                    if self._repair_json and isinstance(content, str):
+                        content, repaired = parse_llm_json(content)
+                        data = extract_data_payload(content)
+                    elif truncated:
                         raise ValueError(f"answer truncated at the token limit: {exc}") from exc
-                    raise
+                    else:
+                        raise
             except Exception as exc:
                 failure = {"model": _model_name(model), "error": str(exc)[:300]}
                 if index < len(self._models) - 1:
@@ -135,6 +146,8 @@ class ProviderRouterEngine(ExtractionEngine):
             if finish_reason is not None:
                 metadata["finish_reason"] = finish_reason
                 metadata["truncated"] = truncated
+            if repaired:
+                metadata["repaired"] = True
             if usage is not None and "usage" not in metadata:
                 metadata["usage"] = usage
             if fallbacks:

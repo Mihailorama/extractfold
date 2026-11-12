@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `parse_llm_json(text) -> (data, repaired)`: orjson (when installed) then stdlib parsing;
+  on failure a built-in closer cuts a truncated answer back to its last complete element
+  (5-10x faster than json_repair on large answers), and `json_repair` handles other damage
+  when installed. New `fast_json` extra (`orjson`, `json_repair`).
+- `ProviderRouterEngine(repair_json=True)` repairs an unparseable answer instead of moving
+  to the next model (`metadata["repaired"]`).
+- `benchmarks/json_repair_bench.py` and results in `docs/benchmarks.md`.
 - Per-field provenance and confidence in `ProviderRouterEngine`:
   `build_source_catalog(text, input_format=, blocks=)` lists citable cells (sheet, CSV),
   layout blocks with page and bbox (docfold `bounding_boxes`), HTML blocks with page, JSON

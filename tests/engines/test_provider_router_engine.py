@@ -240,3 +240,17 @@ async def test_provider_router_default_prompt_carries_context() -> None:
 
     assert "Context:\nDocument structure: table\n\nSource text:\ntext" in prompts[0]
     assert "Context:" not in prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_provider_router_can_repair_a_truncated_answer() -> None:
+    def provider_call(**kwargs: Any) -> dict[str, Any]:
+        return {"content": '{"rows": [{"a": 1}, {"a": 2}, {"a"', "finish_reason": "length"}
+
+    strict = ProviderRouterEngine(provider_call=provider_call, raise_on_error=False)
+    lenient = ProviderRouterEngine(provider_call=provider_call, repair_json=True)
+
+    assert (await strict.extract_text("t", {"type": "object"})).valid is False
+    result = await lenient.extract_text("t", {"type": "object"})
+    assert result.data == {"rows": [{"a": 1}, {"a": 2}]}
+    assert result.metadata["repaired"] is True and result.metadata["truncated"] is True

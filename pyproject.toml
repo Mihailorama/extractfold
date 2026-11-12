@@ -74,8 +74,12 @@ docfold_llm = [
     "extractfold[llm_structured]",
 ]
 evaluation = []
+fast_json = [
+    "orjson>=3.9",
+    "json_repair>=0.30",
+]
 all = [
-    "extractfold[lift,nuextract,provider_router,llm_structured,instructor,fenic,llamaextract,azure_docint,google_docai,textract,docfold_llm,evaluation]",
+    "extractfold[lift,nuextract,provider_router,llm_structured,instructor,fenic,llamaextract,azure_docint,google_docai,textract,docfold_llm,evaluation,fast_json]",
 ]
 test = [
     "pytest>=7.0",
