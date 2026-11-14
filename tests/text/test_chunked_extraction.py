@@ -325,3 +325,57 @@ async def test_extract_rows_chunked_records_a_structured_llm_failure() -> None:
     failed = chunking["chunks"][0]
     assert (failed["stage"], failed["model"], failed["error"]) == ("llm", "m1", "quota exceeded")
     assert failed["error_type"] == "LLMError"
+
+
+def _length_capped_provider(max_rows: int) -> Any:
+    """Fake model: one row per input line, answer cut at *max_rows* rows (finish=length)."""
+
+    def provider_call(**kwargs: Any) -> dict[str, Any]:
+        names = [line for line in kwargs["text"].splitlines() if line.strip()]
+        rows = ", ".join(f'{{"name": "{name}"}}' for name in names[:max_rows])
+        if len(names) <= max_rows:
+            return {"content": f'{{"rows": [{rows}]}}', "finish_reason": "stop"}
+        cut = f'{{"name": "{names[max_rows]}'  # the token limit hits mid-row
+        return {"content": f'{{"rows": [{rows}, {cut}', "finish_reason": "length"}
+
+    return provider_call
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_splits_a_truncated_chunk_and_keeps_its_tail_rows() -> None:
+    from extractfold.engines.provider_router_engine import ProviderRouterEngine
+
+    text = "a\nb\nc\nd\n"
+    result = await extract_rows_chunked(
+        text,
+        {"type": "object", "properties": {"name": {"type": "string"}}},
+        engine=ProviderRouterEngine(provider_call=_length_capped_provider(2), repair_json=True),
+        chunks=[TextChunk(text=text, index=0, start=0, end=len(text), strategy="lines")],
+    )
+
+    assert [row["name"] for row in result.data["rows"]] == ["a", "b", "c", "d"]
+    chunking = result.metadata["chunking"]
+    assert chunking["truncated_chunks"] == 0
+    assert chunking["chunks"][0]["truncated"] is False
+    assert chunking["chunks"][0]["split"] == {"pieces": 2, "truncated_pieces": 0}
+    assert result.valid is True
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_flags_a_chunk_still_truncated_after_splitting() -> None:
+    from extractfold.engines.provider_router_engine import ProviderRouterEngine
+
+    text = "a\nb\nc\n"
+    result = await extract_rows_chunked(
+        text,
+        {"type": "object", "properties": {"name": {"type": "string"}}},
+        engine=ProviderRouterEngine(provider_call=_length_capped_provider(1), repair_json=True),
+        chunks=[TextChunk(text=text, index=0, start=0, end=len(text), strategy="lines")],
+        split_truncated=1,
+    )
+
+    chunking = result.metadata["chunking"]
+    assert chunking["truncated_chunks"] == 1
+    assert chunking["truncated_chunk_indexes"] == [0]
+    assert chunking["partial"] is True
+    assert result.valid is False
