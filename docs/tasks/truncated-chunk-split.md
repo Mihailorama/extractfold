@@ -14,9 +14,11 @@ and the chunk's tail rows were gone.
 
 ## Proposed Solution
 A truncated chunk is split in two at the line break nearest its middle and each half is
-extracted again, halving again up to `split_truncated` levels (default 2, `0` off). The
-second half gets the chunk's first line as context (CSV header). The split answer replaces
-the original when it has at least as many rows. A chunk still truncated is listed in
+extracted again, halving again up to `split_truncated` levels (default 2, `0` off). A csv
+chunk's header (`metadata["header"]`) starts both halves and is left out of their document
+offsets; header-less chunks get no extra context. The split answer replaces the original
+when it adds at least as many rows after dedupe; `raw` stays the original answer and the
+pieces (span, raw, metadata) and summed usage go to the chunk's `split`. A chunk still truncated is listed in
 `chunking["truncated_chunk_indexes"]` and makes the result `partial` and not `valid`.
 
 ## Affected Files
