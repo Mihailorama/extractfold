@@ -1,0 +1,3 @@
+# Dev-only agent config: .claude/skills holds symlinks pointing outside the repo, which
+# makes pip refuse GitHub source archives (EXTRACTFOLD-2). Keep it out of `git archive`.
+.claude export-ignore

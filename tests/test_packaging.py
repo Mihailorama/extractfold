@@ -33,3 +33,10 @@ def test_pyproject_declares_required_extras_and_console_script() -> None:
         "all",
     ]:
         assert name in extras
+
+
+def test_source_archives_leave_out_dev_symlinks() -> None:
+    # .claude/skills holds symlinks outside the repo; pip refuses archives with them.
+    assert ".claude export-ignore" in Path(".gitattributes").read_text(encoding="utf-8")
+    data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    assert ".claude" in data["tool"]["hatch"]["build"]["targets"]["sdist"]["exclude"]

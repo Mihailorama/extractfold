@@ -325,3 +325,148 @@ async def test_extract_rows_chunked_records_a_structured_llm_failure() -> None:
     failed = chunking["chunks"][0]
     assert (failed["stage"], failed["model"], failed["error"]) == ("llm", "m1", "quota exceeded")
     assert failed["error_type"] == "LLMError"
+
+
+def _length_capped_provider(max_rows: int) -> Any:
+    """Fake model: one row per input line, answer cut at *max_rows* rows (finish=length)."""
+
+    def provider_call(**kwargs: Any) -> dict[str, Any]:
+        names = [line for line in kwargs["text"].splitlines() if line.strip()]
+        rows = ", ".join(f'{{"name": "{name}"}}' for name in names[:max_rows])
+        if len(names) <= max_rows:
+            return {"content": f'{{"rows": [{rows}]}}', "finish_reason": "stop"}
+        cut = f'{{"name": "{names[max_rows]}'  # the token limit hits mid-row
+        return {"content": f'{{"rows": [{rows}, {cut}', "finish_reason": "length"}
+
+    return provider_call
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_splits_a_truncated_chunk_and_keeps_its_tail_rows() -> None:
+    from extractfold.engines.provider_router_engine import ProviderRouterEngine
+
+    text = "a\nb\nc\nd\n"
+    result = await extract_rows_chunked(
+        text,
+        {"type": "object", "properties": {"name": {"type": "string"}}},
+        engine=ProviderRouterEngine(provider_call=_length_capped_provider(2), repair_json=True),
+        chunks=[TextChunk(text=text, index=0, start=0, end=len(text), strategy="lines")],
+    )
+
+    assert [row["name"] for row in result.data["rows"]] == ["a", "b", "c", "d"]
+    chunking = result.metadata["chunking"]
+    assert chunking["truncated_chunks"] == 0
+    assert chunking["chunks"][0]["truncated"] is False
+    split = chunking["chunks"][0]["split"]
+    assert (split["pieces"], split["truncated_pieces"], split["kept"]) == (2, 0, True)
+    assert result.valid is True
+
+
+@pytest.mark.asyncio
+async def test_extract_rows_chunked_flags_a_chunk_still_truncated_after_splitting() -> None:
+    from extractfold.engines.provider_router_engine import ProviderRouterEngine
+
+    text = "a\nb\nc\n"
+    result = await extract_rows_chunked(
+        text,
+        {"type": "object", "properties": {"name": {"type": "string"}}},
+        engine=ProviderRouterEngine(provider_call=_length_capped_provider(1), repair_json=True),
+        chunks=[TextChunk(text=text, index=0, start=0, end=len(text), strategy="lines")],
+        split_truncated=1,
+    )
+
+    chunking = result.metadata["chunking"]
+    assert chunking["truncated_chunks"] == 1
+    assert chunking["truncated_chunk_indexes"] == [0]
+    assert chunking["partial"] is True
+    assert result.valid is False
+
+
+def test_halving_a_csv_chunk_keeps_document_offsets_and_repeats_the_header() -> None:
+    from extractfold.chunking import chunk_document
+    from extractfold.text import _halve
+
+    doc = "name\n" + "".join(f"row{i:02d}\n" for i in range(12))
+    chunk = chunk_document(doc, input_format="csv", max_chars=40)[1]
+    halves = _halve(chunk)
+
+    assert halves is not None
+    first, second = halves
+    assert first.text.startswith("name\n") and second.text.startswith("name\n")
+    for half in halves:
+        assert doc[half.start : half.end] == half.text[len("name\n") :]
+    assert (first.start, second.end) == (chunk.start, chunk.end)
+    assert "context" not in second.metadata
+
+
+def test_halving_a_headerless_chunk_quotes_no_data_line_as_context() -> None:
+    from extractfold.text import _halve
+
+    text = "a\nb\nc\nd\n"
+    halves = _halve(TextChunk(text=text, index=0, start=0, end=len(text), strategy="lines"))
+
+    assert halves is not None
+    assert [h.text for h in halves] == ["a\nb\n", "c\nd\n"]
+    assert "context" not in halves[1].metadata
+
+
+def test_halving_skips_a_cut_that_leaves_an_empty_piece() -> None:
+    from extractfold.text import _halve
+
+    text = "\nalpha beta gamma\n"
+    assert _halve(TextChunk(text=text, index=0, start=0, end=len(text), strategy="lines")) is None
+
+
+class TruncatingEngine(ChunkAwareEngine):
+    """Rows by text; texts in *truncated* come back flagged as cut at the token limit."""
+
+    def __init__(self, rows_by_text: dict[str, Any], truncated: set[str]) -> None:
+        super().__init__(rows_by_text)
+        self.truncated = truncated
+
+    async def extract_text(self, text: str, schema, **kwargs: Any) -> ExtractionResult:
+        result = await super().extract_text(text, schema, **kwargs)
+        result.metadata["truncated"] = text in self.truncated
+        return result
+
+
+@pytest.mark.asyncio
+async def test_split_answer_is_kept_only_when_it_has_as_many_distinct_rows() -> None:
+    text = "a\nb\nc\nd\n"
+    engine = TruncatingEngine(
+        {text: [{"id": 1}, {"id": 2}], "a\nb\n": [{"id": 1}], "c\nd\n": [{"id": 1}]},
+        truncated={text},
+    )
+    result = await extract_rows_chunked(
+        text,
+        [{"id": 0}],
+        engine=engine,
+        chunks=[TextChunk(text=text, index=0, start=0, end=len(text), strategy="lines")],
+    )
+
+    assert result.data["rows"] == [{"id": 1}, {"id": 2}]
+    assert result.metadata["chunking"]["chunks"][0]["split"]["kept"] is False
+
+
+@pytest.mark.asyncio
+async def test_split_chunk_keeps_its_raw_answer_and_reports_piece_metadata_and_usage() -> None:
+    from extractfold.engines.provider_router_engine import ProviderRouterEngine
+
+    capped = _length_capped_provider(2)
+
+    def provider_call(**kwargs: Any) -> dict[str, Any]:
+        return {**capped(**kwargs), "usage": {"total_tokens": 10}}
+
+    text = "a\nb\nc\nd\n"
+    result = await extract_rows_chunked(
+        text,
+        {"type": "object", "properties": {"name": {"type": "string"}}},
+        engine=ProviderRouterEngine(model="m1", provider_call=provider_call, repair_json=True),
+        chunks=[TextChunk(text=text, index=0, start=0, end=len(text), strategy="lines")],
+    )
+
+    assert isinstance(result.raw[0], dict) and result.raw[0]["finish_reason"] == "length"
+    split = result.metadata["chunking"]["chunks"][0]["split"]
+    assert [piece["metadata"]["model"] for piece in split["results"]] == ["m1", "m1"]
+    assert [(p["start"], p["end"]) for p in split["results"]] == [(0, 4), (4, 8)]
+    assert split["usage"] == {"total_tokens": 30}

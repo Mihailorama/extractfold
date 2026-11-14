@@ -410,6 +410,8 @@ def _unit_chunk(
         "row_end": row_start + rows,
         "estimated_rows": rows,
     }
+    if header:
+        metadata["header"] = header
     if strategy == "spreadsheet":
         sheets: list[dict[str, Any]] = []
         for unit in group:

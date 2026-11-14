@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-14
+
+### Changed
+- `extract_rows_chunked`: a chunk still cut at the token limit after splitting (or with
+  no line break to split at) now makes the result `valid=False` and
+  `chunking["partial"]=True`, and is listed in `chunking["truncated_chunk_indexes"]`.
+  Before, such a result stayed valid although rows may be missing.
+- csv chunks from `chunk_document` carry their header line in `metadata["header"]`.
+
+### Fixed
+- `extract_rows_chunked` no longer loses a chunk's tail rows silently when its answer is
+  cut at the token limit: the chunk is split at a line break and its halves are extracted
+  again (`split_truncated=`, default 2 levels, `0` off). A csv header starts both halves;
+  the halves' rows are kept when they add at least as many rows after dedupe. The chunk's
+  `split` metadata lists each piece's span, raw answer, metadata and the summed usage.
+- `pip install https://github.com/mihailorama/extractfold/archive/<ref>.tar.gz` works:
+  `.claude` (symlinks outside the repo, refused by current pip) is `export-ignore`d.
+
 ## [0.5.0] - 2026-11-12
 
 ### Changed (breaking)

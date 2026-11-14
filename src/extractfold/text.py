@@ -122,6 +122,7 @@ async def extract_rows_chunked(
     input_format: str | None = None,
     max_rows: int | None = None,
     source_catalog: Sequence[Mapping[str, Any]] | None = None,
+    split_truncated: int = 2,
     **kwargs: Any,
 ) -> ExtractionResult:
     """Extract structured rows from prepared text with chunked orchestration.
@@ -152,6 +153,17 @@ async def extract_rows_chunked(
     With *source_catalog* (:func:`extractfold.provenance.build_source_catalog` of *text*)
     each chunk call gets the entries inside that chunk as ``source_catalog=``; the result's
     ``provenance["rows"]`` stays aligned with ``data["rows"]``.
+
+    A chunk whose answer is cut at the token limit (engine ``metadata["truncated"]``) is
+    split in two at a line break and each half is extracted again, halving again up to
+    *split_truncated* levels (``0``: off). A csv chunk's header starts both halves. The
+    pieces' rows replace the chunk's when they add at least as many (after dedupe); the
+    chunk's ``split`` metadata has ``pieces``, ``truncated_pieces``, ``kept``, ``results``
+    (each piece's span, ``raw`` and metadata) and the summed ``usage``. The chunk's ``raw``
+    stays the original answer.
+    A chunk still truncated after that (or with no line break to split at) is listed in
+    ``chunking["truncated_chunk_indexes"]`` and makes the result ``partial`` and not
+    ``valid``: rows may be missing.
     """
     start = time.perf_counter()
     conversion = _load_or_convert_row_schema(schema)
@@ -227,6 +239,22 @@ async def extract_rows_chunked(
             **kwargs,
         )
 
+    async def _pieces(
+        chunk: TextChunk, digest: str | None, depth: int
+    ) -> list[tuple[TextChunk, ExtractionResult]]:
+        halves = _halve(chunk)
+        if halves is None:
+            return []
+        results: list[tuple[TextChunk, ExtractionResult]] = []
+        for half in halves:
+            result = await _call(half, digest, engine)
+            if result.metadata.get("error") or not isinstance(result.data.get("rows"), list):
+                raise ValueError("a split chunk piece returned no rows list")
+            deeper = await _pieces(half, digest, depth - 1) if (
+                depth > 1 and result.metadata.get("truncated")) else []
+            results.extend(deeper or [(half, result)])
+        return results
+
     prefetched: list[Any] | None = None
     if concurrency > 1 and len(planned_chunks) > 1:
         limit = asyncio.Semaphore(concurrency)
@@ -276,6 +304,35 @@ async def extract_rows_chunked(
             failed_chunks += 1
             continue
 
+        split: dict[str, Any] | None = None
+        if split_truncated > 0 and chunk_result.metadata.get("truncated"):
+            # ponytail: pieces run one at a time, even with concurrency.
+            try:
+                pieces = await _pieces(chunk, previous_digest, split_truncated)
+            except Exception:
+                if not continue_on_error:
+                    raise
+                pieces = []
+            if pieces:
+                piece_rows = [row for _, piece in pieces for row in piece.data["rows"]]
+                kept = _new_rows(piece_rows, seen, dedupe) >= _new_rows(chunk_rows, seen, dedupe)
+                still = sum(bool(piece.metadata.get("truncated")) for _, piece in pieces)
+                usage = _sum_usage([chunk_result, *(piece for _, piece in pieces)])
+                split = {
+                    "pieces": len(pieces),
+                    "truncated_pieces": still,
+                    "kept": kept,
+                    "results": [
+                        {"start": c.start, "end": c.end, "truncated": bool(r.metadata.get(
+                            "truncated")), "raw": r.raw, "metadata": r.metadata}
+                        for c, r in pieces
+                    ],
+                    **({"usage": usage} if usage else {}),
+                }
+                if kept:
+                    chunk_result = _merge_pieces(chunk_result, pieces, truncated=still > 0)
+                    chunk_rows = piece_rows
+
         expected = _expected(chunk)
         rerun: dict[str, Any] | None = None
         if rerun_below is not None and expected and len(chunk_rows) < rerun_below * expected:
@@ -324,6 +381,7 @@ async def extract_rows_chunked(
                 "checks": check_rows(chunk_rows, columns=columns, expected_rows=expected),
                 "expected_rows": expected,
                 **({"rerun": rerun} if rerun else {}),
+                **({"split": split} if split else {}),
                 "rows_returned": len(chunk_rows),
                 "rows_added": added,
                 "duplicates_removed": duplicates,
@@ -357,7 +415,7 @@ async def extract_rows_chunked(
         schema=result_schema,
         provenance=provenance,
         field_confidence=field_confidence(provenance_rows) if provenance else {},
-        valid=validation.valid and failed_chunks == 0,
+        valid=validation.valid and failed_chunks == 0 and truncated_chunks == 0,
         raw=raw_results,
         metadata={
             "row_schema": row_schema,
@@ -367,16 +425,102 @@ async def extract_rows_chunked(
                 "total_chunks": len(planned_chunks),
                 "succeeded_chunks": succeeded_chunks,
                 "failed_chunks": failed_chunks,
-                "partial": failed_chunks > 0,
+                "partial": failed_chunks > 0 or truncated_chunks > 0,
                 "rows_extracted": len(rows),
                 "duplicates_removed": total_duplicates,
                 "truncated_chunks": truncated_chunks,
+                "truncated_chunk_indexes": [
+                    c["index"] for c in chunk_metadata if c.get("truncated")
+                ],
                 "rerun_chunks": rerun_chunks,
                 "chunks": chunk_metadata,
             },
             **control,
         },
         processing_time_ms=int((time.perf_counter() - start) * 1000),
+    )
+
+
+def _halve(chunk: TextChunk) -> tuple[TextChunk, TextChunk] | None:
+    """*chunk* cut in two at the line break nearest its middle; ``None`` without one.
+
+    A chunk with ``metadata["header"]`` (csv) keeps the header at the start of both halves;
+    when the header is not part of the chunk's document span (``start``/``end``), the
+    offsets skip it.
+    """
+    text = chunk.text
+    header = chunk.metadata.get("header") or ""
+    if not text.startswith(header):
+        header = ""
+    prefix = max(len(text) - (chunk.end - chunk.start), 0)  # text chars outside the span
+    middle = (len(header) + len(text)) // 2
+    cuts = [
+        i + 1 for i, char in enumerate(text)
+        if char == "\n" and text[len(header) : i + 1].strip() and text[i + 1 :].strip()
+    ]
+    if not cuts:
+        return None
+    cut = min(cuts, key=lambda c: abs(c - middle))
+    at = chunk.start + cut - prefix
+    return (
+        replace(chunk, text=text[:cut], end=at),
+        replace(chunk, text=header + text[cut:], start=at),
+    )
+
+
+def _new_rows(rows: Sequence[Any], seen: set[str], dedupe: bool) -> int:
+    """How many of *rows* the merge would add (after ``_row_key`` dedupe when on)."""
+    if not dedupe:
+        return len(rows)
+    return len({key for key in map(_row_key, rows) if key not in seen})
+
+
+def _sum_usage(results: Sequence[ExtractionResult]) -> dict[str, Any]:
+    """Numeric ``metadata["usage"]`` fields summed over *results*."""
+    total: dict[str, Any] = {}
+    for result in results:
+        usage = result.metadata.get("usage")
+        if not isinstance(usage, Mapping):
+            continue
+        for key, value in usage.items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                total[key] = total.get(key, 0) + value
+    return total
+
+
+def _merge_pieces(
+    original: ExtractionResult,
+    pieces: Sequence[tuple[TextChunk, ExtractionResult]],
+    *,
+    truncated: bool,
+) -> ExtractionResult:
+    """The chunk's result with the rows of its split pieces, provenance aligned.
+
+    ``raw`` and the other metadata stay the original call's; usage is summed.
+    """
+    rows: list[Any] = []
+    provenance: list[Any] = []
+    for _, piece in pieces:
+        piece_rows = piece.data["rows"]
+        piece_provenance = piece.provenance.get("rows")
+        if not isinstance(piece_provenance, list):
+            piece_provenance = []
+        rows.extend(piece_rows)
+        provenance.extend(
+            piece_provenance[i] if i < len(piece_provenance) else {}
+            for i in range(len(piece_rows))
+        )
+    usage = _sum_usage([original, *(piece for _, piece in pieces)])
+    return replace(
+        original,
+        data={"rows": rows},
+        provenance={"rows": provenance} if any(provenance) else {},
+        valid=all(piece.valid for _, piece in pieces),
+        metadata={
+            **original.metadata, "truncated": truncated, **({"usage": usage} if usage else {})
+        },
+        processing_time_ms=(original.processing_time_ms or 0)
+        + sum(piece.processing_time_ms or 0 for _, piece in pieces),
     )
 
 
