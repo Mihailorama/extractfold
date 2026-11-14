@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-14
+
+### Fixed
+- `extract_rows_chunked` no longer loses a chunk's tail rows silently when its answer is
+  cut at the token limit: the chunk is split at a line break and its halves are extracted
+  again (`split_truncated=`, default 2 levels, `0` off). A chunk still truncated is listed
+  in `chunking["truncated_chunk_indexes"]` and makes the result `partial` and not `valid`.
+- `pip install https://github.com/mihailorama/extractfold/archive/<ref>.tar.gz` works:
+  `.claude` (symlinks outside the repo, refused by current pip) is `export-ignore`d.
+
 ## [0.5.0] - 2026-11-12
 
 ### Changed (breaking)

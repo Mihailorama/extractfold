@@ -33,7 +33,7 @@ from extractfold.rules import check_rules, suggest_rules
 from extractfold.schema import SchemaConversionResult, infer_schema, template_to_schema
 from extractfold.text import extract_rows_chunked
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 __all__ = [
     "BatchExtractionResult",
